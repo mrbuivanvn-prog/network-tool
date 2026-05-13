@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Network Tool Ultimate v13.0 - Pure Tkinter (Easy Build)
-Chạy mượt trên Windows & Linux, build EXE không lỗi
+Network Tool Ultimate v13.0 - Professional Edition
+Pure Tkinter, Build without flashing, Professional UI
 """
 
 import tkinter as tk
@@ -15,17 +15,33 @@ import re
 import ipaddress
 import time
 import queue
+import sys
+import logging
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+
+# ============================================================================
+# LOGGING SETUP
+# ============================================================================
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(Path.home() / ".network_tool.log"),
+        logging.StreamHandler()
+    ]
+)
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 SYSTEM = platform.system().lower()
 IS_WINDOWS = SYSTEM == 'windows'
+APP_NAME = "Network Tool Ultimate"
+APP_VERSION = "v13.0"
 
-print(f"✅ Running on: {SYSTEM.upper()}")
+logging.info(f"✅ Starting {APP_NAME} {APP_VERSION} on {SYSTEM.upper()}")
 
 # ============================================================================
 # COLORS - Modern Dark Theme
@@ -82,7 +98,8 @@ class NetworkAdapter:
                 'avg': sum(times) / len(times) if times else None,
                 'max': max(times) if times else None,
             }
-        except:
+        except Exception as e:
+            logging.error(f"Ping error: {e}")
             return {'success': False, 'sent': 0, 'received': 0, 'loss_pct': 100, 'times': []}
     
     @staticmethod
@@ -115,7 +132,8 @@ class NetworkAdapter:
                 if m:
                     arp[m.group(2).upper()].append(m.group(1))
             return dict(arp)
-        except:
+        except Exception as e:
+            logging.error(f"ARP table error: {e}")
             return {}
     
     @staticmethod
@@ -126,7 +144,8 @@ class NetworkAdapter:
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except:
+        except Exception as e:
+            logging.error(f"IP detection error: {e}")
             return "127.0.0.1"
 
 
@@ -137,7 +156,7 @@ class StyledButton(tk.Button):
     def __init__(self, parent, text, command=None, bg=COLORS['accent'], width=12):
         super().__init__(parent, text=text, command=command, bg=bg, fg='white',
                         font=('Segoe UI', 10, 'bold'), relief=tk.FLAT, cursor='hand2',
-                        width=width, padx=5, pady=5)
+                        width=width, padx=5, pady=5, activebackground=bg, activeforeground='white')
         self.default_bg = bg
         self.bind('<Enter>', self._on_enter)
         self.bind('<Leave>', self._on_leave)
@@ -169,6 +188,7 @@ class HostCard(tk.Frame):
         self.on_remove = on_remove
         self.running = True
         self.queue = queue.Queue()
+        self.ping_count = 0
         
         self._create_ui()
         self._start_ping()
@@ -214,7 +234,7 @@ class HostCard(tk.Frame):
                                   ("RDP", self._rdp, COLORS['purple']),
                                   ("VNC", self._vnc, COLORS['orange'])]:
             btn = tk.Button(btn_frame, text=text, bg=COLORS['sidebar'], fg='white',
-                          font=('Segoe UI', 8), relief=tk.FLAT, command=cmd)
+                          font=('Segoe UI', 8), relief=tk.FLAT, command=cmd, activebackground=color)
             btn.pack(side=tk.LEFT, padx=2, expand=True, fill=tk.X)
             btn.bind('<Enter>', lambda e, b=btn, c=color: b.config(bg=c))
             btn.bind('<Leave>', lambda e, b=btn: b.config(bg=COLORS['sidebar']))
@@ -222,9 +242,14 @@ class HostCard(tk.Frame):
     def _start_ping(self):
         def loop():
             while self.running:
-                r = NetworkAdapter.ping(self.ip, count=1, timeout=2)
-                self.queue.put(r)
+                try:
+                    r = NetworkAdapter.ping(self.ip, count=1, timeout=2)
+                    self.queue.put(r)
+                    self.ping_count += 1
+                except Exception as e:
+                    logging.error(f"Ping loop error for {self.ip}: {e}")
                 time.sleep(1)
+        
         threading.Thread(target=loop, daemon=True).start()
         threading.Thread(target=self._update, daemon=True).start()
     
@@ -245,27 +270,39 @@ class HostCard(tk.Frame):
                     self.recv_lbl.config(text=f"📥 Recv: {r['received']}")
                     loss_color = COLORS['red'] if r['loss_pct'] > 0 else COLORS['green']
                     self.loss_lbl.config(text=f"⚠️ Loss: {r['loss_pct']:.0f}%", fg=loss_color)
-            except:
-                pass
+            except Exception as e:
+                logging.error(f"Update error: {e}")
             time.sleep(0.1)
     
     def _ssh(self):
-        if IS_WINDOWS:
-            subprocess.Popen(f'start ssh {self.ip}', shell=True)
-        else:
-            subprocess.Popen(['gnome-terminal', '--', 'ssh', self.ip])
+        try:
+            if IS_WINDOWS:
+                subprocess.Popen(f'start ssh {self.ip}', shell=True)
+            else:
+                subprocess.Popen(['gnome-terminal', '--', 'ssh', self.ip])
+        except Exception as e:
+            logging.error(f"SSH error: {e}")
     
     def _http(self):
-        import webbrowser
-        webbrowser.open(f'http://{self.ip}')
+        try:
+            import webbrowser
+            webbrowser.open(f'http://{self.ip}')
+        except Exception as e:
+            logging.error(f"HTTP error: {e}")
     
     def _rdp(self):
-        if IS_WINDOWS:
-            subprocess.Popen(f'mstsc /v:{self.ip}', shell=True)
+        try:
+            if IS_WINDOWS:
+                subprocess.Popen(f'mstsc /v:{self.ip}', shell=True)
+        except Exception as e:
+            logging.error(f"RDP error: {e}")
     
     def _vnc(self):
-        if IS_WINDOWS:
-            subprocess.Popen(f'vncviewer {self.ip}', shell=True)
+        try:
+            if IS_WINDOWS:
+                subprocess.Popen(f'vncviewer {self.ip}', shell=True)
+        except Exception as e:
+            logging.error(f"VNC error: {e}")
     
     def _remove(self):
         self.running = False
@@ -290,7 +327,7 @@ class AIAssistant:
                 fg=COLORS['accent'], font=('Segoe UI', 14, 'bold')).pack(pady=10)
         
         self.chat = tk.Text(self.parent, bg=COLORS['card'], fg=COLORS['text'],
-                           font=('Segoe UI', 10), wrap=tk.WORD, height=18)
+                           font=('Segoe UI', 10), wrap=tk.WORD, height=18, state=tk.DISABLED)
         self.chat.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         
         welcome = """💡 Ask me about network:
@@ -303,7 +340,7 @@ class AIAssistant:
   • "my ip" - Your IP address
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"""
-        self.chat.insert("1.0", welcome)
+        self._append_chat(welcome)
         
         input_frame = tk.Frame(self.parent, bg=COLORS['bg'])
         input_frame.pack(fill=tk.X, padx=10, pady=5)
@@ -315,11 +352,17 @@ class AIAssistant:
         
         StyledButton(input_frame, "Send", self._ask, COLORS['green'], 8).pack(side=tk.RIGHT)
     
+    def _append_chat(self, text):
+        self.chat.config(state=tk.NORMAL)
+        self.chat.insert(tk.END, text)
+        self.chat.config(state=tk.DISABLED)
+        self.chat.see(tk.END)
+    
     def _ask(self, event=None):
         q = self.entry.get().strip()
         if not q:
             return
-        self.chat.insert(tk.END, f"\n👤 You: {q}\n")
+        self._append_chat(f"\n👤 You: {q}\n")
         self.entry.delete(0, tk.END)
         
         q_lower = q.lower()
@@ -338,8 +381,7 @@ class AIAssistant:
         else:
             ans = "💡 Try: ping, port scan, slow network, packet loss, traceroute, my ip"
         
-        self.chat.insert(tk.END, f"🤖 AI: {ans}\n\n")
-        self.chat.see(tk.END)
+        self._append_chat(f"🤖 AI: {ans}\n\n")
 
 
 # ============================================================================
@@ -348,26 +390,43 @@ class AIAssistant:
 class NetToolApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title(f"Network Tool Ultimate - {SYSTEM.upper()}")
+        self.root.title(f"{APP_NAME} - {APP_VERSION} ({SYSTEM.upper()})")
         self.root.geometry("1400x800")
         self.root.configure(bg=COLORS['bg'])
+        
+        # Set window icon (if available)
+        self._set_window_icon()
         
         self.hosts = {}
         self.groups = {"Default": []}
         self.config_file = Path.home() / ".network_tool.json"
+        self.active_threads = []
         
         self._load_config()
         self._create_ui()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        
+        logging.info("✅ Application started successfully")
+    
+    def _set_window_icon(self):
+        """Set window icon if available"""
+        try:
+            if IS_WINDOWS:
+                # Create a simple icon using tkinter
+                icon_image = tk.PhotoImage(width=1, height=1)
+                self.root.iconphoto(False, icon_image)
+        except Exception as e:
+            logging.warning(f"Could not set icon: {e}")
     
     def _create_ui(self):
         # Header
         header = tk.Frame(self.root, bg=COLORS['accent'], height=55)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
-        tk.Label(header, text="🌐 NETWORK TOOL ULTIMATE", bg=COLORS['accent'],
+        tk.Label(header, text=f"🌐 {APP_NAME.upper()} {APP_VERSION}", bg=COLORS['accent'],
                 fg='white', font=('Segoe UI', 16, 'bold')).pack(side=tk.LEFT, padx=20)
-        self.status = tk.Label(header, text="✓ READY", bg=COLORS['accent'], fg='white')
+        self.status = tk.Label(header, text="✓ READY", bg=COLORS['accent'], fg='white', 
+                              font=('Segoe UI', 10, 'bold'))
         self.status.pack(side=tk.RIGHT, padx=20)
         
         # Main
@@ -401,7 +460,8 @@ class NetToolApp:
         for text, cmd in nav_items:
             btn = tk.Button(sidebar, text=text, bg=COLORS['sidebar'], fg=COLORS['text_sec'],
                           font=('Segoe UI', 10), relief=tk.FLAT, cursor='hand2',
-                          padx=10, pady=8, command=cmd)
+                          padx=10, pady=8, command=cmd, activebackground=COLORS['card'],
+                          activeforeground=COLORS['accent'])
             btn.pack(fill=tk.X, pady=4, padx=10)
             btn.bind('<Enter>', lambda e, b=btn: b.config(bg=COLORS['card']))
             btn.bind('<Leave>', lambda e, b=btn: b.config(bg=COLORS['sidebar']))
@@ -484,41 +544,55 @@ class NetToolApp:
     def _quick_ping(self):
         host = self.quick_entry.get().strip()
         if not host:
+            messagebox.showwarning("Warning", "Enter host IP/Domain")
             return
         self.quick_result.delete("1.0", tk.END)
         self.quick_result.insert("1.0", f"⏳ Pinging {host}...")
         
         def do():
-            r = NetworkAdapter.ping(host, 4)
-            def up():
-                self.quick_result.delete("1.0", tk.END)
-                if r['success']:
-                    self.quick_result.insert("1.0",
-                        f"✅ {host} is ALIVE\n"
-                        f"📊 Loss: {r['loss_pct']:.0f}%\n"
-                        f"⏱️ Min: {r['min']:.1f}ms | Avg: {r['avg']:.1f}ms | Max: {r['max']:.1f}ms")
-                else:
-                    self.quick_result.insert("1.0", f"❌ {host} is DEAD")
-            self.root.after(0, up)
+            try:
+                r = NetworkAdapter.ping(host, 4)
+                def up():
+                    self.quick_result.delete("1.0", tk.END)
+                    if r['success']:
+                        self.quick_result.insert("1.0",
+                            f"✅ {host} is ALIVE\n"
+                            f"📊 Loss: {r['loss_pct']:.0f}%\n"
+                            f"⏱️ Min: {r['min']:.1f}ms | Avg: {r['avg']:.1f}ms | Max: {r['max']:.1f}ms")
+                    else:
+                        self.quick_result.insert("1.0", f"❌ {host} is DEAD or UNREACHABLE")
+                self.root.after(0, up)
+            except Exception as e:
+                logging.error(f"Quick ping error: {e}")
+                self.root.after(0, lambda: self.quick_result.insert("1.0", f"❌ Error: {str(e)}"))
+        
         threading.Thread(target=do, daemon=True).start()
     
     def _add_host(self):
         ip = self.ping_ip.get().strip()
         name = self.ping_name.get().strip()
         if not ip:
+            messagebox.showwarning("Warning", "Enter host IP")
             return
         if not name:
             name = ip
         if ip in self.hosts:
+            messagebox.showinfo("Info", "Host already added")
             return
-        HostCard(self.hosts_container, ip, name, self._remove_host)
-        self.hosts[ip] = None
-        self._save_config()
+        try:
+            HostCard(self.hosts_container, ip, name, self._remove_host)
+            self.hosts[ip] = None
+            self._save_config()
+            logging.info(f"Added host: {ip} ({name})")
+        except Exception as e:
+            logging.error(f"Add host error: {e}")
+            messagebox.showerror("Error", f"Failed to add host: {e}")
     
     def _remove_host(self, ip):
         if ip in self.hosts:
             del self.hosts[ip]
             self._save_config()
+            logging.info(f"Removed host: {ip}")
     
     def _stop_all(self):
         for w in self.hosts_container.winfo_children():
@@ -526,6 +600,7 @@ class NetToolApp:
                 w.stop()
             w.destroy()
         self.hosts.clear()
+        logging.info("Stopped all hosts")
     
     # ============================================================
     # TRACE PAGE
@@ -556,14 +631,20 @@ class NetToolApp:
     def _run_trace(self):
         host = self.trace_target.get().strip()
         if not host:
+            messagebox.showwarning("Warning", "Enter target host")
             return
         self.trace_text.delete("1.0", tk.END)
         self.trace_text.insert("1.0", f"Tracing {host}...\n")
         
         def do():
-            out = NetworkAdapter.traceroute(host)
-            self.root.after(0, lambda: self.trace_text.delete("1.0", tk.END))
-            self.root.after(0, lambda: self.trace_text.insert("1.0", out))
+            try:
+                out = NetworkAdapter.traceroute(host)
+                self.root.after(0, lambda: self.trace_text.delete("1.0", tk.END))
+                self.root.after(0, lambda: self.trace_text.insert("1.0", out))
+            except Exception as e:
+                logging.error(f"Trace error: {e}")
+                self.root.after(0, lambda: self.trace_text.insert("1.0", f"Error: {str(e)}"))
+        
         threading.Thread(target=do, daemon=True).start()
     
     # ============================================================
@@ -614,6 +695,7 @@ class NetToolApp:
         target = self.scan_target.get().strip()
         ports_str = self.scan_ports.get().strip()
         if not target or not ports_str:
+            messagebox.showwarning("Warning", "Enter target and ports")
             return
         
         ports = []
@@ -635,14 +717,19 @@ class NetToolApp:
                 ok = s.connect_ex((target, p)) == 0
                 s.close()
                 return (p, ok)
-            except:
+            except Exception as e:
+                logging.error(f"Port check error: {e}")
                 return (p, False)
         
         def do():
-            with ThreadPoolExecutor(max_workers=50) as ex:
-                for p, ok in ex.map(check, ports):
-                    if ok:
-                        self.root.after(0, lambda x=p: self.port_tree.insert('', 'end', values=(x, "✓ OPEN", services.get(x, "Unknown"))))
+            try:
+                with ThreadPoolExecutor(max_workers=50) as ex:
+                    for p, ok in ex.map(check, ports):
+                        if ok:
+                            self.root.after(0, lambda x=p: self.port_tree.insert('', 'end', values=(x, "✓ OPEN", services.get(x, "Unknown"))))
+            except Exception as e:
+                logging.error(f"Scan ports error: {e}")
+        
         threading.Thread(target=do, daemon=True).start()
     
     # ============================================================
@@ -679,6 +766,7 @@ class NetToolApp:
     def _scan_network(self):
         cidr = self.cidr_entry.get().strip()
         if not cidr:
+            messagebox.showwarning("Warning", "Enter CIDR range")
             return
         self.network_tree.delete(*self.network_tree.get_children())
         
@@ -686,14 +774,21 @@ class NetToolApp:
             try:
                 net = ipaddress.ip_network(cidr, strict=False)
                 def ping_ip(ip):
-                    r = NetworkAdapter.ping(str(ip), 1, 1)
-                    return str(ip) if r['success'] else None
+                    try:
+                        r = NetworkAdapter.ping(str(ip), 1, 1)
+                        return str(ip) if r['success'] else None
+                    except Exception as e:
+                        logging.error(f"Network scan error: {e}")
+                        return None
+                
                 with ThreadPoolExecutor(max_workers=50) as ex:
                     for ip in ex.map(ping_ip, net.hosts()):
                         if ip:
                             self.root.after(0, lambda x=ip: self.network_tree.insert('', 'end', values=(x, "✓ ALIVE")))
             except Exception as e:
+                logging.error(f"Scan error: {e}")
                 self.root.after(0, lambda: messagebox.showerror("Error", str(e)))
+        
         threading.Thread(target=do, daemon=True).start()
     
     # ============================================================
@@ -720,17 +815,22 @@ class NetToolApp:
         self.loop_text.insert("1.0", "Analyzing ARP table...\n")
         
         def do():
-            arp = NetworkAdapter.get_arp_table()
-            dup = {mac: ips for mac, ips in arp.items() if len(ips) > 1}
-            def up():
-                self.loop_text.delete("1.0", tk.END)
-                if dup:
-                    self.loop_text.insert("1.0", f"⚠️ Found {len(dup)} duplicate MACs:\n\n")
-                    for mac, ips in dup.items():
-                        self.loop_text.insert(tk.END, f"MAC: {mac}\nIPs: {', '.join(ips)}\n\n")
-                else:
-                    self.loop_text.insert("1.0", "✅ No duplicate MACs found")
-            self.root.after(0, up)
+            try:
+                arp = NetworkAdapter.get_arp_table()
+                dup = {mac: ips for mac, ips in arp.items() if len(ips) > 1}
+                def up():
+                    self.loop_text.delete("1.0", tk.END)
+                    if dup:
+                        self.loop_text.insert("1.0", f"⚠️ Found {len(dup)} duplicate MACs:\n\n")
+                        for mac, ips in dup.items():
+                            self.loop_text.insert(tk.END, f"MAC: {mac}\nIPs: {', '.join(ips)}\n\n")
+                    else:
+                        self.loop_text.insert("1.0", "✅ No duplicate MACs found")
+                self.root.after(0, up)
+            except Exception as e:
+                logging.error(f"Loop detection error: {e}")
+                self.root.after(0, lambda: self.loop_text.insert("1.0", f"Error: {str(e)}"))
+        
         threading.Thread(target=do, daemon=True).start()
     
     # ============================================================
@@ -801,30 +901,35 @@ class NetToolApp:
     def _create_group(self):
         n = self.new_group.get().strip()
         if not n:
+            messagebox.showwarning("Warning", "Enter group name")
             return
         if n in self.groups:
-            messagebox.showwarning("Error", "Group exists")
+            messagebox.showwarning("Error", "Group already exists")
             return
         self.groups[n] = []
         self.new_group.delete(0, tk.END)
         self._refresh_groups()
         self._save_config()
+        logging.info(f"Created group: {n}")
     
     def _add_ip_to_group(self):
         sel = self.groups_list.curselection()
         if not sel:
+            messagebox.showwarning("Warning", "Select a group")
             return
         n = self.groups_list.get(sel[0]).split(' (')[0]
-        ip = simpledialog.askstring("Add IP", "Enter IP:")
+        ip = simpledialog.askstring("Add IP", "Enter IP address:")
         if ip and ip not in self.groups[n]:
             self.groups[n].append(ip)
             self._refresh_groups()
             self._save_config()
+            logging.info(f"Added IP {ip} to group {n}")
     
     def _remove_ip_from_group(self):
         sel = self.groups_list.curselection()
         isel = self.ips_list.curselection()
         if not sel or not isel:
+            messagebox.showwarning("Warning", "Select group and IP")
             return
         n = self.groups_list.get(sel[0]).split(' (')[0]
         ip = self.ips_list.get(isel[0])
@@ -832,20 +937,24 @@ class NetToolApp:
             self.groups[n].remove(ip)
             self._refresh_groups()
             self._save_config()
+            logging.info(f"Removed IP {ip} from group {n}")
     
     def _load_group_to_ping(self):
         sel = self.groups_list.curselection()
         if not sel:
+            messagebox.showwarning("Warning", "Select a group")
             return
         n = self.groups_list.get(sel[0]).split(' (')[0]
         ips = self.groups.get(n, [])
         if not ips:
+            messagebox.showinfo("Info", "Group is empty")
             return
         self._show_ping()
         for ip in ips:
             if ip not in self.hosts:
                 HostCard(self.hosts_container, ip, ip, self._remove_host)
                 self.hosts[ip] = None
+        logging.info(f"Loaded group {n} with {len(ips)} IPs")
     
     # ============================================================
     # AI PAGE
@@ -871,42 +980,74 @@ class NetToolApp:
         StyledButton(center, "📥 Import Config", self._import_config, COLORS['accent'], 20).pack(pady=8)
         StyledButton(center, "🔄 Reset All", self._reset_all, COLORS['red'], 20).pack(pady=8)
         
+        # Info
+        info_text = tk.Text(frame, bg=COLORS['bg'], fg=COLORS['text_sec'], height=8, 
+                           font=('Segoe UI', 9), relief=tk.FLAT)
+        info_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
+        info_text.insert("1.0", f"""
+{APP_NAME} {APP_VERSION}
+
+📍 Config Location:
+{Path.home() / ".network_tool.json"}
+
+📊 Log Location:
+{Path.home() / ".network_tool.log"}
+
+💾 Use Export/Import to backup your groups and settings.
+        """)
+        info_text.config(state=tk.DISABLED)
+        
         self.pages["backup"] = page
     
     def _export_config(self):
-        f = filedialog.asksaveasfilename(defaultextension=".json")
+        f = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
         if f:
-            with open(f, 'w') as fp:
-                json.dump({'groups': self.groups}, fp, indent=2)
-            messagebox.showinfo("Success", "Exported")
+            try:
+                with open(f, 'w') as fp:
+                    json.dump({'groups': self.groups}, fp, indent=2)
+                messagebox.showinfo("Success", "Configuration exported")
+                logging.info(f"Exported config to {f}")
+            except Exception as e:
+                logging.error(f"Export error: {e}")
+                messagebox.showerror("Error", f"Export failed: {e}")
     
     def _import_config(self):
         f = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
         if f:
-            with open(f, 'r') as fp:
-                self.groups = json.load(fp).get('groups', {"Default": []})
-                self._refresh_groups()
-                self._save_config()
-            messagebox.showinfo("Success", "Imported")
+            try:
+                with open(f, 'r') as fp:
+                    self.groups = json.load(fp).get('groups', {"Default": []})
+                    self._refresh_groups()
+                    self._save_config()
+                messagebox.showinfo("Success", "Configuration imported")
+                logging.info(f"Imported config from {f}")
+            except Exception as e:
+                logging.error(f"Import error: {e}")
+                messagebox.showerror("Error", f"Import failed: {e}")
     
     def _reset_all(self):
-        if messagebox.askyesno("Confirm", "Reset all?"):
+        if messagebox.askyesno("Confirm", "Reset all data?\nThis cannot be undone"):
             self._stop_all()
             self.groups = {"Default": []}
             self._refresh_groups()
             self._save_config()
+            messagebox.showinfo("Success", "All data reset")
+            logging.info("Reset all data")
     
     def _save_config(self):
-        with open(self.config_file, 'w') as f:
-            json.dump({'groups': self.groups}, f)
+        try:
+            with open(self.config_file, 'w') as f:
+                json.dump({'groups': self.groups}, f, indent=2)
+        except Exception as e:
+            logging.error(f"Save config error: {e}")
     
     def _load_config(self):
         if self.config_file.exists():
             try:
                 with open(self.config_file, 'r') as f:
                     self.groups = json.load(f).get('groups', {"Default": []})
-            except:
-                pass
+            except Exception as e:
+                logging.error(f"Load config error: {e}")
     
     # ============================================================
     # NAVIGATION
@@ -953,8 +1094,10 @@ class NetToolApp:
         self.pages["backup"].pack(fill=tk.BOTH, expand=True)
     
     def _on_close(self):
+        logging.info("✅ Closing application")
         self._stop_all()
         self.root.destroy()
+        sys.exit(0)
     
     def run(self):
         self.root.mainloop()
@@ -964,5 +1107,9 @@ class NetToolApp:
 # MAIN
 # ============================================================================
 if __name__ == "__main__":
-    app = NetToolApp()
-    app.run()
+    try:
+        app = NetToolApp()
+        app.run()
+    except Exception as e:
+        logging.error(f"Fatal error: {e}", exc_info=True)
+        sys.exit(1)
