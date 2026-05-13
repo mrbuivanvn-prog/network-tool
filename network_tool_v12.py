@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+"""
 Network Tool Ultimate v13.0 - Pure Tkinter (Easy Build)
 Chạy mượt trên Windows & Linux, build EXE không lỗi
 Phiên bản cải tiến: Không chớp chớp, UI 3D đẹp, Logo sứa, Cursor input rõ ràng
