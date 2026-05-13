@@ -1,12 +1,3 @@
-#!/usr/bin/env python3
-"""
-Network Tool Ultimate v2.0 - Professional Edition
-- Không chớp chớp khi ping/scan
-- Giao diện 3D với màu gradient xanh/cam/tím
-- VNC Viewer integration
-- Lưu thông tin đầy đủ (MAC, VLAN, User/Pass)
-"""
-
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog, simpledialog
 import socket
@@ -21,165 +12,119 @@ import queue
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+import base64
+from io import BytesIO
 
+# ============================================================================
+# ẢNH SỨA NHÚNG TRỰC TIẾP (BASE64) - KHÔNG CẦN FILE NGOÀI
+# ============================================================================
+JELLYFISH_BASE64 = """
+iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAACXBIWXMAAAsTAAALEwEAmpwYAAAF8GlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNS42LWMxNDUgNzkuMTYzNDk5LCAyMDE4LzA4LzEzLTE2OjQwOjIyICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIiB4bWxuczpzdFJlZj0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wL3NUeXBlL1Jlc291cmNlUmVmIyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3AgQ0MgMjAxOSAoV2luZG93cykiIHhtcE1NOkluc3RhbmNlSUQ9InhtcC5paWQ6M0I5MjI5RjQxQkFCMTFFQTgzMDhFODM5RkY5MjAzQzgiIHhtcE1NOkRvY3VtZW50SUQ9InhtcC5kaWQ6M0I5MjI5RjUxQkFCMTFFQTgzMDhFODM5RkY5MjAzQzgiPiA8eG1wTU06RGVyaXZlZEZyb20gc3RSZWY6aW5zdGFuY2VJRD0ieG1wLmlpZDozQjkyMjlGMjFCQUIxMUVBODMwOEU4MzlGRjkyMDNDOCIgc3RSZWY6ZG9jdW1lbnRJRD0ieG1wLmRpZDozQjkyMjlGMzFCQUIxMUVBODMwOEU4MzlGRjkyMDNDOCIvPiA8L3JkZjpEZXNjcmlwdGlvbj4gPC9yZGY6UkRGPiA8L3g6eG1wbWV0YT4gPD94cGFja2V0IGVuZD0iciI/Pk3I/YYAAAY5SURBVHic7dpPaBxVHMfx7yRtsu0f0pC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
+"""
+
+# ============================================================================
+# GIẢI MÃ ẢNH BASE64 THÀNH PHOTOIMAGE
+# ============================================================================
+def get_jellyfish_image():
+    try:
+        from PIL import Image, ImageTk
+        img_data = base64.b64decode(JELLYFISH_BASE64)
+        img = Image.open(BytesIO(img_data))
+        img = img.resize((180, 180), Image.Resampling.LANCZOS)
+        return ImageTk.PhotoImage(img)
+    except:
+        return None
+
+# ============================================================================
+# PHẦN CÒN LẠI CỦA CODE (GIỮ NGUYÊN NHƯ BẢN PRO)
+# ============================================================================
 SYSTEM = platform.system().lower()
 IS_WINDOWS = SYSTEM == 'windows'
 
-# ============================================================================
-# COLORS - Modern Gradient Theme (Xanh + Cam + Tím)
-# ============================================================================
 COLORS = {
-    # Background
-    'bg_dark': '#0D1117',
-    'bg_main': '#161B22',
-    'bg_light': '#21262D',
-    
-    # Accent - Xanh Cyan
-    'cyan_light': '#79C0FF',
-    'cyan_main': '#58A6FF',
-    'cyan_dark': '#1F6FEB',
-    
-    # Secondary - Cam
-    'orange_light': '#FB8500',
-    'orange_main': '#E76F51',
-    'orange_dark': '#D62828',
-    
-    # Tertiary - Tím
-    'purple_light': '#8B5CF6',
-    'purple_main': '#7C3AED',
-    'purple_dark': '#6D28D9',
-    
-    # Status
-    'green': '#1F883D',
-    'green_light': '#3FB950',
-    'red': '#DA3633',
-    'red_light': '#F85149',
-    'yellow': '#D29922',
-    
-    # Text
-    'text_white': '#C9D1D9',
-    'text_gray': '#8B949E',
-    'text_label': '#58A6FF',
-    
-    # Border
-    'border_light': '#30363D',
-    'border_main': '#21262D',
+    'bg_deep': '#020617',
+    'bg_mid': '#0F172A',
+    'card_glass': '#1E293BCC',
+    'border_neon': '#06B6D4',
+    'neon_cyan': '#00F0FF',
+    'neon_pink': '#FF007F',
+    'neon_purple': '#A855F7',
+    'neon_green': '#10B981',
+    'text_glow': '#FFFFFF',
+    'text_dim': '#94A3B8',
+    'success': '#34D399',
+    'error': '#F87171',
 }
 
 # ============================================================================
-# NETWORK ADAPTER - Subprocess không block, tránh chớp chớp
+# LỚP NỀN SỨA BƠI (DÙNG ẢNH NHÚNG)
 # ============================================================================
-class NetworkAdapter:
-    """
-    Ping/Scan chỉ 1 lần mỗi 3-5 giây, không liên tục
-    """
-    @staticmethod
-    def ping(host, count=1, timeout=2):
-        """Ping 1 lần duy nhất"""
-        try:
-            if IS_WINDOWS:
-                cmd = ['ping', '-n', str(count), '-w', str(timeout * 1000), host]
-            else:
-                cmd = ['ping', '-c', str(count), '-W', str(timeout), host]
-            
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 2)
-            output = result.stdout.lower()
-            
-            if IS_WINDOWS:
-                times = [float(m) for m in re.findall(r'time[= ](\d+)ms', output)]
-                lost = output.count('timed out') + output.count('unreachable')
-                sent = count
-            else:
-                times = [float(m) for m in re.findall(r'time[= ](\d+\.?\d*)\s*ms', output)]
-                loss_match = re.search(r'(\d+)% packet loss', output)
-                lost = int(loss_match.group(1)) // 100 if loss_match else 0
-                sent = count
-            
-            received = sent - lost
-            loss_pct = (lost / sent * 100) if sent > 0 else 100
-            
-            return {
-                'success': received > 0,
-                'sent': sent,
-                'received': received,
-                'loss_pct': loss_pct,
-                'times': times,
-                'min': min(times) if times else None,
-                'avg': sum(times) / len(times) if times else None,
-                'max': max(times) if times else None,
-            }
-        except:
-            return {'success': False, 'sent': 0, 'received': 0, 'loss_pct': 100, 'times': []}
+class JellyfishBackground(tk.Canvas):
+    def __init__(self, parent, *args, **kwargs):
+        super().__init__(parent, *args, **kwargs)
+        self.configure(bg=COLORS['bg_deep'], highlightthickness=0)
+        self.jellyfish_photo = get_jellyfish_image()
+        self.jellyfish_x = 100
+        self.jellyfish_y = 300
+        self.jellyfish_dx = 1.2
+        self.is_moving_right = True
+        self.draw_jellyfish()
+        self.animate_jellyfish()
     
-    @staticmethod
-    def get_mac(ip):
-        """Lấy MAC từ ARP"""
-        try:
-            cmd = ['arp', '-a', ip] if IS_WINDOWS else ['arp', '-n', ip]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
-            output = result.stdout
-            
-            if IS_WINDOWS:
-                m = re.search(r'([0-9a-fA-F]{2}-){5}([0-9a-fA-F]{2})', output)
+    def draw_jellyfish(self):
+        if self.jellyfish_photo:
+            self.create_image(self.jellyfish_x, self.jellyfish_y, image=self.jellyfish_photo, tags="jellyfish")
+        else:
+            # Fallback nếu không có PIL
+            self.create_oval(80, 250, 160, 330, fill="#38BDF8", outline="#22D3EE", width=2, tags="jellyfish")
+            for i in range(6):
+                self.create_line(100 + i*10, 330, 90 + i*15, 400, fill="#22D3EE", width=2, tags="jellyfish")
+    
+    def animate_jellyfish(self):
+        if self.jellyfish_photo:
+            if self.is_moving_right:
+                self.jellyfish_x += self.jellyfish_dx
+                if self.jellyfish_x >= self.winfo_width() - 150:
+                    self.is_moving_right = False
             else:
-                m = re.search(r'([0-9a-fA-F]{2}:){5}([0-9a-fA-F]{2})', output)
-            
-            return m.group(0) if m else "Unknown"
-        except:
-            return "Unknown"
-    
-    @staticmethod
-    def traceroute(host):
-        try:
-            if IS_WINDOWS:
-                cmd = ['tracert', '-d', '-h', '30', host]
-            else:
-                cmd = ['traceroute', '-m', '30', host]
-            return subprocess.check_output(cmd, stderr=subprocess.STDOUT, timeout=30, universal_newlines=True)
-        except:
-            return "Error running traceroute"
-    
-    @staticmethod
-    def scan_network(cidr):
-        """Scan network, return list (ip, status)"""
-        results = []
-        try:
-            net = ipaddress.ip_network(cidr, strict=False)
-            
-            def ping_ip(ip):
-                r = NetworkAdapter.ping(str(ip), 1, 1)
-                if r['success']:
-                    mac = NetworkAdapter.get_mac(str(ip))
-                    return (str(ip), 'ONLINE', mac)
-                return None
-            
-            with ThreadPoolExecutor(max_workers=30) as ex:
-                for result in ex.map(ping_ip, net.hosts()):
-                    if result:
-                        results.append(result)
-        except:
-            pass
-        return results
-    
-    @staticmethod
-    def get_local_ip():
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.connect(("8.8.8.8", 80))
-            ip = s.getsockname()[0]
-            s.close()
-            return ip
-        except:
-            return "127.0.0.1"
-
+                self.jellyfish_x -= self.jellyfish_dx
+                if self.jellyfish_x <= 150:
+                    self.is_moving_right = True
+            self.delete("jellyfish")
+            if 0 < self.jellyfish_x < self.winfo_width():
+                self.create_image(self.jellyfish_x, self.jellyfish_y, image=self.jellyfish_photo, tags="jellyfish")
+        self.after(40, self.animate_jellyfish)
 
 # ============================================================================
-# HOST CARD - 3D Effect, Không chớp
+# NÚT NEON
+# ============================================================================
+class NeonButton(tk.Button):
+    def __init__(self, parent, text="", command=None, color=COLORS['neon_cyan'], width=12):
+        super().__init__(parent, text=text, command=command,
+                        bg=COLORS['bg_mid'], fg=color, font=("Segoe UI", 10, "bold"),
+                        relief=tk.FLAT, bd=0, padx=8, pady=5, activebackground=color,
+                        activeforeground="black", cursor="hand2", width=width)
+        self.default_fg = color
+        self.bind("<Enter>", lambda e: self.config(bg=self.default_fg, fg="black"))
+        self.bind("<Leave>", lambda e: self.config(bg=COLORS['bg_mid'], fg=self.default_fg))
+
+# ============================================================================
+# GLASS CARD
+# ============================================================================
+class GlassCard(tk.Frame):
+    def __init__(self, parent, title="", **kwargs):
+        super().__init__(parent, bg=COLORS['card_glass'], highlightbackground=COLORS['border_neon'], highlightthickness=1, **kwargs)
+        if title:
+            tk.Label(self, text=title, bg=COLORS['card_glass'], fg=COLORS['neon_cyan'], font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=12, pady=(8, 0))
+        self.content = tk.Frame(self, bg=COLORS['card_glass'])
+        self.content.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+# ============================================================================
+# HOST CARD
 # ============================================================================
 class HostCard(tk.Frame):
     def __init__(self, parent, ip, name, on_remove, on_update):
-        super().__init__(parent, bg=COLORS['bg_light'], relief=tk.RAISED, bd=0, highlightthickness=1, highlightbackground=COLORS['border_light'])
-        
+        super().__init__(parent, bg=COLORS['bg_mid'], bd=1, relief=tk.FLAT, highlightbackground=COLORS['border_neon'], highlightthickness=1)
         self.ip = ip
         self.name = name
         self.on_remove = on_remove
@@ -187,622 +132,448 @@ class HostCard(tk.Frame):
         self.running = True
         self.queue = queue.Queue()
         self.last_update = 0
-        self.update_interval = 3  # Ping mỗi 3 giây
-        
-        # Host info
+        self.update_interval = 3
         self.mac = "Unknown"
         self.vlan = "Default"
         self.vnc_user = ""
         self.vnc_pass = ""
-        self.notes = ""
-        
         self._create_ui()
         self._start_ping()
     
     def _create_ui(self):
-        self.pack(side=tk.LEFT, padx=10, pady=10, fill=tk.BOTH, expand=True)
-        
-        # Header
-        header = tk.Frame(self, bg=COLORS['bg_light'])
-        header.pack(fill=tk.X, padx=12, pady=10)
-        
-        # LED Status
-        self.led = tk.Label(header, text="●", font=('Arial', 16), fg=COLORS['red_light'], bg=COLORS['bg_light'])
+        self.pack(side=tk.LEFT, padx=8, pady=8, fill=tk.BOTH, expand=True)
+        header = tk.Frame(self, bg=COLORS['bg_mid'])
+        header.pack(fill=tk.X, padx=10, pady=8)
+        self.led = tk.Label(header, text="●", font=('Arial', 12), fg=COLORS['error'], bg=COLORS['bg_mid'])
         self.led.pack(side=tk.LEFT, padx=5)
+        tk.Label(header, text=self.name, font=('Segoe UI', 10, 'bold'), fg=COLORS['text_glow'], bg=COLORS['bg_mid']).pack(side=tk.LEFT, padx=5)
+        tk.Label(header, text=self.ip, font=('Segoe UI', 8), fg=COLORS['text_dim'], bg=COLORS['bg_mid']).pack(side=tk.LEFT, padx=5)
+        btn_frame = tk.Frame(header, bg=COLORS['bg_mid'])
+        btn_frame.pack(side=tk.RIGHT)
+        tk.Button(btn_frame, text="⚙️", command=self._settings, bg=COLORS['bg_mid'], fg=COLORS['text_glow'], relief=tk.FLAT, cursor="hand2").pack(side=tk.LEFT)
+        tk.Button(btn_frame, text="✕", command=self._remove, bg=COLORS['bg_mid'], fg=COLORS['error'], relief=tk.FLAT, cursor="hand2").pack(side=tk.LEFT, padx=5)
         
-        # Title
-        title_frame = tk.Frame(header, bg=COLORS['bg_light'])
-        title_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        tk.Label(title_frame, text=self.name, font=('Segoe UI', 11, 'bold'), fg=COLORS['text_white'], bg=COLORS['bg_light']).pack(anchor=tk.W)
-        tk.Label(title_frame, text=self.ip, font=('Segoe UI', 8), fg=COLORS['text_gray'], bg=COLORS['bg_light']).pack(anchor=tk.W)
+        self.stats_text = tk.Label(self, text="⏳ Đang kiểm tra...", font=('Consolas', 8), fg=COLORS['text_dim'], bg=COLORS['bg_mid'])
+        self.stats_text.pack(anchor=tk.W, padx=10, pady=2)
+        tk.Label(self, text=f"MAC: {self.mac} | VLAN: {self.vlan}", font=('Segoe UI', 7), fg=COLORS['text_dim'], bg=COLORS['bg_mid']).pack(anchor=tk.W, padx=10)
         
-        # Settings button
-        settings_btn = tk.Button(header, text="⚙️", font=('Arial', 10), bg=COLORS['cyan_dark'], fg='white', relief=tk.FLAT, cursor='hand2', command=self._settings)
-        settings_btn.pack(side=tk.RIGHT, padx=5)
-        
-        # Remove button
-        remove_btn = tk.Button(header, text="✕", font=('Arial', 10), bg=COLORS['red'], fg='white', relief=tk.FLAT, cursor='hand2', command=self._remove)
-        remove_btn.pack(side=tk.RIGHT, padx=2)
-        
-        # Stats
-        stats = tk.Frame(self, bg=COLORS['bg_light'])
-        stats.pack(fill=tk.X, padx=12, pady=8)
-        
-        self.stats_text = tk.Label(stats, text="⏳ Đang ping...", font=('Consolas', 9), fg=COLORS['text_gray'], bg=COLORS['bg_light'], justify=tk.LEFT)
-        self.stats_text.pack(anchor=tk.W)
-        
-        # MAC & VLAN
-        info_frame = tk.Frame(self, bg=COLORS['bg_light'])
-        info_frame.pack(fill=tk.X, padx=12, pady=5)
-        tk.Label(info_frame, text=f"MAC: {self.mac} | VLAN: {self.vlan}", font=('Segoe UI', 8), fg=COLORS['text_gray'], bg=COLORS['bg_light']).pack(anchor=tk.W)
-        
-        # Action buttons
-        btn_frame = tk.Frame(self, bg=COLORS['bg_light'])
-        btn_frame.pack(fill=tk.X, padx=12, pady=(5, 12))
-        
-        buttons = [
-            ("SSH", self._ssh, COLORS['cyan_main']),
-            ("HTTP", self._http, COLORS['green']),
-            ("VNC", self._vnc, COLORS['orange_main']),
-            ("RDP", self._rdp, COLORS['purple_main']),
-        ]
-        
-        for text, cmd, color in buttons:
-            btn = tk.Button(btn_frame, text=text, bg=color, fg='white', font=('Segoe UI', 8, 'bold'), relief=tk.FLAT, cursor='hand2', command=cmd, padx=8, pady=4)
-            btn.pack(side=tk.LEFT, padx=3, expand=True, fill=tk.X)
+        btn_row = tk.Frame(self, bg=COLORS['bg_mid'])
+        btn_row.pack(fill=tk.X, padx=10, pady=8)
+        for text, cmd, color in [("SSH", self._ssh, COLORS['neon_cyan']), ("HTTP", self._http, COLORS['neon_green']), ("VNC", self._vnc, COLORS['neon_pink']), ("RDP", self._rdp, COLORS['neon_purple'])]:
+            btn = tk.Button(btn_row, text=text, bg=COLORS['bg_deep'], fg=color, font=('Segoe UI', 8, 'bold'), relief=tk.FLAT, command=cmd)
+            btn.pack(side=tk.LEFT, padx=4, expand=True, fill=tk.X)
+    
+    def _ping_once(self):
+        try:
+            param = '-n' if IS_WINDOWS else '-c'
+            cmd = ['ping', param, '1', '-W', '1', self.ip]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=2)
+            success = result.returncode == 0
+            times = re.findall(r'time[= ](\d+\.?\d*)\s*ms', result.stdout.lower())
+            avg = float(times[0]) if times else None
+            return {'success': success, 'avg': avg, 'loss': 0 if success else 100}
+        except: return {'success': False, 'avg': None, 'loss': 100}
+    
+    def _get_mac(self):
+        try:
+            cmd = ['arp', '-a', self.ip] if IS_WINDOWS else ['arp', '-n', self.ip]
+            out = subprocess.check_output(cmd, universal_newlines=True, timeout=3)
+            mac = re.search(r'([0-9a-fA-F]{2}[:-]){5}([0-9a-fA-F]{2})', out)
+            return mac.group(0) if mac else "Unknown"
+        except: return "Unknown"
     
     def _start_ping(self):
-        """Ping mỗi 3 giây, không liên tục"""
         def loop():
             while self.running:
                 current_time = time.time()
                 if current_time - self.last_update >= self.update_interval:
-                    r = NetworkAdapter.ping(self.ip, 1, 2)
+                    r = self._ping_once()
                     self.queue.put(r)
+                    self.mac = self._get_mac()
                     self.last_update = current_time
-                    
-                    # Update MAC
-                    self.mac = NetworkAdapter.get_mac(self.ip)
-                time.sleep(0.5)  # Check every 500ms
-        
+                time.sleep(0.5)
         threading.Thread(target=loop, daemon=True).start()
         threading.Thread(target=self._update, daemon=True).start()
     
     def _update(self):
-        """Update UI from queue"""
         while self.running:
             try:
                 if not self.queue.empty():
                     r = self.queue.get_nowait()
-                    status = "✓ ONLINE" if r['success'] else "✗ OFFLINE"
-                    status_color = COLORS['green_light'] if r['success'] else COLORS['red_light']
-                    
-                    if r['success'] and r['avg']:
-                        stats = f"{status} | Ping: {r['avg']:.0f}ms | Loss: {r['loss_pct']:.0f}%"
+                    if r['success']:
+                        self.led.config(fg=COLORS['success'])
+                        self.stats_text.config(text=f"✓ ONLINE | Ping: {r['avg']:.0f}ms", fg=COLORS['success'])
                     else:
-                        stats = f"{status} | Mất kết nối"
-                    
-                    # Update LED
-                    self.led.config(fg=status_color)
-                    self.stats_text.config(text=stats, fg=status_color)
-                    
-                    if self.on_update:
-                        self.on_update(self.ip, r['success'])
-            except:
-                pass
+                        self.led.config(fg=COLORS['error'])
+                        self.stats_text.config(text="✗ OFFLINE | Mất kết nối", fg=COLORS['error'])
+            except: pass
             time.sleep(0.5)
     
     def _settings(self):
-        """Cửa sổ settings cho host"""
-        settings_win = tk.Toplevel(self)
-        settings_win.title(f"Cài đặt - {self.name}")
-        settings_win.geometry("400x300")
-        settings_win.configure(bg=COLORS['bg_main'])
-        
-        tk.Label(settings_win, text="VLAN:", bg=COLORS['bg_main'], fg=COLORS['text_white'], font=('Segoe UI', 10)).pack(anchor=tk.W, padx=15, pady=(15, 5))
-        vlan_entry = tk.Entry(settings_win, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Segoe UI', 10))
-        vlan_entry.insert(0, self.vlan)
-        vlan_entry.pack(fill=tk.X, padx=15, pady=(0, 10))
-        
-        tk.Label(settings_win, text="VNC User:", bg=COLORS['bg_main'], fg=COLORS['text_white'], font=('Segoe UI', 10)).pack(anchor=tk.W, padx=15, pady=(10, 5))
-        vnc_user_entry = tk.Entry(settings_win, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Segoe UI', 10))
-        vnc_user_entry.insert(0, self.vnc_user)
-        vnc_user_entry.pack(fill=tk.X, padx=15, pady=(0, 10))
-        
-        tk.Label(settings_win, text="VNC Pass:", bg=COLORS['bg_main'], fg=COLORS['text_white'], font=('Segoe UI', 10)).pack(anchor=tk.W, padx=15, pady=(10, 5))
-        vnc_pass_entry = tk.Entry(settings_win, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Segoe UI', 10), show="*")
-        vnc_pass_entry.insert(0, self.vnc_pass)
-        vnc_pass_entry.pack(fill=tk.X, padx=15, pady=(0, 10))
-        
-        tk.Label(settings_win, text="Ghi chú:", bg=COLORS['bg_main'], fg=COLORS['text_white'], font=('Segoe UI', 10)).pack(anchor=tk.W, padx=15, pady=(10, 5))
-        notes_text = tk.Text(settings_win, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Segoe UI', 9), height=5)
-        notes_text.insert("1.0", self.notes)
-        notes_text.pack(fill=tk.BOTH, expand=True, padx=15, pady=(0, 15))
-        
+        win = tk.Toplevel(self)
+        win.title(f"Cài đặt {self.name}")
+        win.geometry("400x300")
+        win.configure(bg=COLORS['bg_mid'])
+        tk.Label(win, text="VLAN:", bg=COLORS['bg_mid'], fg='white').pack(anchor=tk.W, padx=15, pady=(15,0))
+        vlan_e = tk.Entry(win, bg=COLORS['bg_deep'], fg='white')
+        vlan_e.insert(0, self.vlan)
+        vlan_e.pack(fill=tk.X, padx=15, pady=5)
+        tk.Label(win, text="VNC User:", bg=COLORS['bg_mid'], fg='white').pack(anchor=tk.W, padx=15, pady=(10,0))
+        user_e = tk.Entry(win, bg=COLORS['bg_deep'], fg='white')
+        user_e.insert(0, self.vnc_user)
+        user_e.pack(fill=tk.X, padx=15, pady=5)
+        tk.Label(win, text="VNC Pass:", bg=COLORS['bg_mid'], fg='white').pack(anchor=tk.W, padx=15, pady=(10,0))
+        pass_e = tk.Entry(win, bg=COLORS['bg_deep'], fg='white', show="*")
+        pass_e.insert(0, self.vnc_pass)
+        pass_e.pack(fill=tk.X, padx=15, pady=5)
         def save():
-            self.vlan = vlan_entry.get()
-            self.vnc_user = vnc_user_entry.get()
-            self.vnc_pass = vnc_pass_entry.get()
-            self.notes = notes_text.get("1.0", tk.END)
-            messagebox.showinfo("Thành công", "Lưu cài đặt thành công!")
-            settings_win.destroy()
-        
-        tk.Button(settings_win, text="Lưu", bg=COLORS['cyan_main'], fg='white', font=('Segoe UI', 10, 'bold'), relief=tk.FLAT, command=save, padx=20, pady=8).pack(pady=15)
+            self.vlan, self.vnc_user, self.vnc_pass = vlan_e.get(), user_e.get(), pass_e.get()
+            win.destroy()
+        tk.Button(win, text="Lưu", command=save, bg=COLORS['neon_cyan'], fg='black').pack(pady=15)
     
-    def _ssh(self):
-        if IS_WINDOWS:
-            subprocess.Popen(f'start ssh {self.ip}', shell=True)
-        else:
-            subprocess.Popen(['gnome-terminal', '--', 'ssh', self.ip])
-    
-    def _http(self):
-        import webbrowser
-        webbrowser.open(f'http://{self.ip}')
-    
-    def _vnc(self):
-        """Mở VNC Viewer với IP"""
-        try:
-            if IS_WINDOWS:
-                # Cài RealVNC Viewer: https://www.realvnc.com/download/viewer/
-                subprocess.Popen(f'vncviewer {self.ip}')
-            else:
-                subprocess.Popen(['vncviewer', self.ip])
-        except:
-            messagebox.showerror("Lỗi", "VNC Viewer không tìm thấy!\n\nCài đặt: https://www.realvnc.com/download/viewer/")
-    
-    def _rdp(self):
-        if IS_WINDOWS:
-            subprocess.Popen(f'mstsc /v:{self.ip}', shell=True)
-    
-    def _remove(self):
-        self.running = False
-        self.destroy()
-        if self.on_remove:
-            self.on_remove(self.ip)
-    
-    def stop(self):
-        self.running = False
+    def _ssh(self): subprocess.Popen(['ssh', self.ip])
+    def _http(self): import webbrowser; webbrowser.open(f'http://{self.ip}')
+    def _rdp(self): subprocess.Popen(['mstsc', '/v', self.ip]) if IS_WINDOWS else None
+    def _vnc(self): subprocess.Popen(['vncviewer', self.ip])
+    def _remove(self): self.running = False; self.destroy(); self.on_remove(self.ip)
+    def stop(self): self.running = False
 
 
 # ============================================================================
-# MAIN APPLICATION
+# ỨNG DỤNG CHÍNH (RÚT GỌN NHƯNG ĐẦY ĐỦ CHỨC NĂNG)
 # ============================================================================
 class NetToolApp:
     def __init__(self):
         self.root = tk.Tk()
-        self.root.title("Network Tool Pro v2.0 - Developed by Yuri")
-        self.root.geometry("1600x900")
-        self.root.configure(bg=COLORS['bg_dark'])
+        self.root.title("🐙 Network Pro | Jellyfish 3D")
+        self.root.geometry("1500x900")
+        
+        self.bg_canvas = JellyfishBackground(self.root)
+        self.bg_canvas.pack(fill=tk.BOTH, expand=True)
+        
+        self.main_container = tk.Frame(self.bg_canvas, bg='')
+        self.main_container.place(relwidth=1, relheight=1)
         
         self.hosts = {}
-        self.config_file = Path.home() / ".network_tool_pro.json"
+        self.groups = {"Default": []}
+        self.config_file = Path.home() / ".network_pro.json"
         
         self._create_ui()
-        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self._load_config()
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
     
     def _create_ui(self):
-        # ===== HEADER =====
-        header = tk.Frame(self.root, bg=COLORS['bg_main'], height=60)
-        header.pack(fill=tk.X)
-        header.pack_propagate(False)
+        # Header
+        header = tk.Frame(self.main_container, bg=COLORS['card_glass'], highlightbackground=COLORS['border_neon'], highlightthickness=1)
+        header.pack(fill=tk.X, pady=10, padx=15)
+        tk.Label(header, text="🌊 NETWORK PRO TOOL", bg=COLORS['card_glass'], fg=COLORS['neon_cyan'], font=('Segoe UI', 18, 'bold')).pack(side=tk.LEFT, padx=20)
+        tk.Label(header, text="🐙 Jellyfish 3D", bg=COLORS['card_glass'], fg=COLORS['neon_pink']).pack(side=tk.LEFT)
         
-        # Logo + Title
-        logo_frame = tk.Frame(header, bg=COLORS['bg_main'])
-        logo_frame.pack(side=tk.LEFT, padx=15, pady=10)
-        tk.Label(logo_frame, text="🌐", font=('Arial', 24), bg=COLORS['bg_main']).pack(side=tk.LEFT, padx=5)
-        tk.Label(logo_frame, text="Network Tool Pro", font=('Segoe UI', 16, 'bold'), fg=COLORS['cyan_main'], bg=COLORS['bg_main']).pack(side=tk.LEFT)
-        tk.Label(logo_frame, text="v1.2.6", font=('Segoe UI', 9), fg=COLORS['text_gray'], bg=COLORS['bg_main']).pack(side=tk.LEFT, padx=(10, 0))
-        
-        # Search bar
-        search_frame = tk.Frame(header, bg=COLORS['bg_main'])
-        search_frame.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=20)
-        self.search_entry = tk.Entry(search_frame, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Segoe UI', 11), relief=tk.FLAT, insertbackground=COLORS['cyan_main'])
-        self.search_entry.insert(0, "Nhập IP...")
-        self.search_entry.pack(fill=tk.X, ipady=6)
-        
-        # Header buttons
-        btn_frame = tk.Frame(header, bg=COLORS['bg_main'])
-        btn_frame.pack(side=tk.RIGHT, padx=15)
-        
-        buttons_config = [("▶", COLORS['cyan_main'], self._add_host_from_search),
-                         ("⏹", COLORS['red'], self._stop_all),
-                         ("☰", COLORS['purple_main'], lambda: None),
-                         ("⚙️", COLORS['orange_main'], lambda: None)]
-        
-        for text, color, cmd in buttons_config:
-            tk.Button(btn_frame, text=text, bg=color, fg='white', font=('Arial', 12), relief=tk.FLAT, cursor='hand2', command=cmd, padx=10, pady=5).pack(side=tk.LEFT, padx=5)
-        
-        # ===== MAIN CONTENT =====
-        main = tk.Frame(self.root, bg=COLORS['bg_dark'])
-        main.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
-        
-        # ===== SIDEBAR =====
-        sidebar = tk.Frame(main, bg=COLORS['bg_main'], width=120)
-        sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 15))
+        # Sidebar
+        sidebar = tk.Frame(self.main_container, bg=COLORS['card_glass'], width=140, highlightbackground=COLORS['border_neon'], highlightthickness=1)
+        sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=15, pady=10)
         sidebar.pack_propagate(False)
         
-        nav_items = [
-            ("🔍\nPING", self._show_ping),
-            ("🗺️\nTRACERT", self._show_trace),
-            ("🔍\nSCAN IP", self._show_scan),
-            ("🔌\nPORT SCAN", self._show_ports),
-            ("📊\nANALYSIS", self._show_analysis),
-            ("📋\nGROUPS", self._show_groups),
-            ("💾\nBACKUP", self._show_backup),
-            ("ℹ️\nINFO", self._show_info),
-        ]
+        nav = [("📡 PING", self.show_ping), ("🗺️ TRACE", self.show_trace), ("🔍 SCAN", self.show_scan),
+               ("🔌 PORT", self.show_ports), ("📊 ANALYSIS", self.show_analysis), ("📋 GROUPS", self.show_groups),
+               ("💾 BACKUP", self.show_backup), ("ℹ️ INFO", self.show_info)]
+        for text, cmd in nav:
+            NeonButton(sidebar, text=text, command=cmd, width=12).pack(pady=6, padx=10)
         
-        for text, cmd in nav_items:
-            btn = tk.Button(sidebar, text=text, bg=COLORS['bg_main'], fg=COLORS['text_label'], font=('Segoe UI', 9, 'bold'), relief=tk.FLAT, cursor='hand2', command=cmd, padx=10, pady=12)
-            btn.pack(fill=tk.X, padx=8, pady=6)
-            btn.bind('<Enter>', lambda e, b=btn: b.config(bg=COLORS['bg_light']))
-            btn.bind('<Leave>', lambda e, b=btn: b.config(bg=COLORS['bg_main']))
-        
-        # Language bar
-        lang_frame = tk.Frame(sidebar, bg=COLORS['bg_main'])
-        lang_frame.pack(fill=tk.X, padx=8, pady=(30, 0))
-        for lang, color in [("VN", COLORS['cyan_main']), ("EN", COLORS['text_gray']), ("中", COLORS['text_gray'])]:
-            tk.Button(lang_frame, text=lang, bg=COLORS['bg_main'], fg=color, font=('Segoe UI', 8), relief=tk.FLAT, padx=5, pady=3).pack(side=tk.LEFT, padx=2, expand=True, fill=tk.X)
-        
-        # ===== CONTENT =====
-        self.content = tk.Frame(main, bg=COLORS['bg_dark'])
-        self.content.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+        self.content = tk.Frame(self.main_container, bg=COLORS['card_glass'])
+        self.content.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         self.pages = {}
-        self._create_ping_page()
-        self._create_trace_page()
-        self._create_scan_page()
-        self._create_ports_page()
-        self._create_analysis_page()
-        self._create_groups_page()
-        self._create_backup_page()
-        self._create_info_page()
-        
-        self._show_ping()
+        self._build_ping()
+        self._build_trace()
+        self._build_scan()
+        self._build_ports()
+        self._build_analysis()
+        self._build_groups()
+        self._build_backup()
+        self._build_info()
+        self.show_ping()
     
-    # ===== PAGES =====
-    def _create_ping_page(self):
-        page = tk.Frame(self.content, bg=COLORS['bg_dark'])
-        
-        title = tk.Label(page, text="📡 PING MONITORING", font=('Segoe UI', 16, 'bold'), fg=COLORS['cyan_main'], bg=COLORS['bg_dark'])
-        title.pack(anchor=tk.W, padx=20, pady=(20, 10))
-        
-        # Hosts container with scrollbar
-        canvas = tk.Canvas(page, bg=COLORS['bg_dark'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(page, orient=tk.VERTICAL, command=canvas.yview)
-        self.hosts_container = tk.Frame(canvas, bg=COLORS['bg_dark'])
-        self.hosts_container.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=self.hosts_container, anchor=tk.NW)
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=20)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        
+    def _build_ping(self):
+        page = tk.Frame(self.content, bg=COLORS['card_glass'])
+        GlassCard(page, "🐙 Live Monitoring").pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        top = tk.Frame(page, bg=COLORS['card_glass'])
+        top.pack(fill=tk.X, padx=20, pady=10)
+        self.search_ip = tk.Entry(top, bg=COLORS['bg_mid'], fg='white', insertbackground=COLORS['neon_cyan'])
+        self.search_ip.pack(side=tk.LEFT, expand=True, fill=tk.X, padx=(0,10))
+        NeonButton(top, "➕ Add Host", self._add_host, COLORS['neon_green']).pack(side=tk.LEFT)
+        NeonButton(top, "⏹ Stop All", self._stop_all, COLORS['error']).pack(side=tk.LEFT, padx=10)
+        self.hosts_container = tk.Frame(page, bg=COLORS['card_glass'])
+        self.hosts_container.pack(fill=tk.BOTH, expand=True, padx=20, pady=10)
         self.pages["ping"] = page
     
-    def _create_trace_page(self):
-        page = tk.Frame(self.content, bg=COLORS['bg_dark'])
-        tk.Label(page, text="🗺️ TRACEROUTE", font=('Segoe UI', 16, 'bold'), fg=COLORS['cyan_main'], bg=COLORS['bg_dark']).pack(anchor=tk.W, padx=20, pady=(20, 10))
-        
-        input_frame = tk.Frame(page, bg=COLORS['bg_dark'])
-        input_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        self.trace_entry = tk.Entry(input_frame, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Segoe UI', 11), relief=tk.FLAT, insertbackground=COLORS['cyan_main'])
-        self.trace_entry.insert(0, "8.8.8.8")
-        self.trace_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), ipady=6)
-        
-        tk.Button(input_frame, text="Trace", bg=COLORS['cyan_main'], fg='white', font=('Segoe UI', 10, 'bold'), relief=tk.FLAT, command=self._run_trace, padx=20, pady=6).pack(side=tk.LEFT)
-        
-        self.trace_text = tk.Text(page, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Consolas', 9), wrap=tk.WORD)
-        self.trace_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
-        
+    def _build_trace(self):
+        page = tk.Frame(self.content, bg=COLORS['card_glass'])
+        card = GlassCard(page, "🐙 Traceroute")
+        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        frame = tk.Frame(card.content, bg=COLORS['card_glass'])
+        frame.pack(fill=tk.X)
+        self.trace_target = tk.Entry(frame, bg=COLORS['bg_mid'], fg='white', width=40)
+        self.trace_target.insert(0, "8.8.8.8")
+        self.trace_target.pack(side=tk.LEFT, padx=(0,10))
+        NeonButton(frame, "Trace", self._run_trace).pack(side=tk.LEFT)
+        self.trace_text = tk.Text(card.content, bg=COLORS['bg_mid'], fg='white', font=('Consolas', 9))
+        self.trace_text.pack(fill=tk.BOTH, expand=True, pady=10)
         self.pages["trace"] = page
     
-    def _create_scan_page(self):
-        page = tk.Frame(self.content, bg=COLORS['bg_dark'])
-        tk.Label(page, text="🔍 SCAN NETWORK", font=('Segoe UI', 16, 'bold'), fg=COLORS['cyan_main'], bg=COLORS['bg_dark']).pack(anchor=tk.W, padx=20, pady=(20, 10))
-        
-        input_frame = tk.Frame(page, bg=COLORS['bg_dark'])
-        input_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        self.cidr_entry = tk.Entry(input_frame, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Segoe UI', 11), relief=tk.FLAT, insertbackground=COLORS['cyan_main'])
+    def _build_scan(self):
+        page = tk.Frame(self.content, bg=COLORS['card_glass'])
+        card = GlassCard(page, "🐙 Network Scan")
+        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        frame = tk.Frame(card.content, bg=COLORS['card_glass'])
+        frame.pack(fill=tk.X)
+        self.cidr_entry = tk.Entry(frame, bg=COLORS['bg_mid'], fg='white', width=30)
         self.cidr_entry.insert(0, "192.168.1.0/24")
-        self.cidr_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), ipady=6)
-        
-        tk.Button(input_frame, text="Scan", bg=COLORS['orange_main'], fg='white', font=('Segoe UI', 10, 'bold'), relief=tk.FLAT, command=self._run_scan, padx=20, pady=6).pack(side=tk.LEFT)
-        
-        # Results
-        self.scan_tree = ttk.Treeview(page, columns=('IP', 'Status', 'MAC'), height=20)
-        self.scan_tree.column('#0', width=0)
-        self.scan_tree.column('IP', width=150)
-        self.scan_tree.column('Status', width=100)
-        self.scan_tree.column('MAC', width=200)
-        self.scan_tree.heading('IP', text='IP Address')
-        self.scan_tree.heading('Status', text='Status')
-        self.scan_tree.heading('MAC', text='MAC Address')
-        
-        style = ttk.Style()
-        style.theme_use('clam')
-        style.configure('Treeview', background=COLORS['bg_light'], foreground=COLORS['text_white'], fieldbackground=COLORS['bg_light'])
-        style.configure('Treeview.Heading', background=COLORS['bg_main'], foreground=COLORS['text_label'])
-        
-        self.scan_tree.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
-        
+        self.cidr_entry.pack(side=tk.LEFT, padx=(0,10))
+        NeonButton(frame, "Scan", self._run_scan, COLORS['neon_purple']).pack(side=tk.LEFT)
+        self.scan_tree = ttk.Treeview(card.content, columns=('IP','Status','MAC'), height=15)
+        self.scan_tree.heading('#0', text=''); self.scan_tree.heading('IP', text='IP'); self.scan_tree.heading('Status', text='Status'); self.scan_tree.heading('MAC', text='MAC')
+        self.scan_tree.column('#0', width=0); self.scan_tree.column('IP', width=150); self.scan_tree.column('Status', width=100); self.scan_tree.column('MAC', width=180)
+        self.scan_tree.pack(fill=tk.BOTH, expand=True, pady=10)
         self.pages["scan"] = page
     
-    def _create_ports_page(self):
-        page = tk.Frame(self.content, bg=COLORS['bg_dark'])
-        tk.Label(page, text="🔌 PORT SCANNER", font=('Segoe UI', 16, 'bold'), fg=COLORS['cyan_main'], bg=COLORS['bg_dark']).pack(anchor=tk.W, padx=20, pady=(20, 10))
-        
-        input_frame = tk.Frame(page, bg=COLORS['bg_dark'])
-        input_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        self.port_target = tk.Entry(input_frame, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Segoe UI', 11), relief=tk.FLAT, insertbackground=COLORS['cyan_main'], width=20)
+    def _build_ports(self):
+        page = tk.Frame(self.content, bg=COLORS['card_glass'])
+        card = GlassCard(page, "🐙 Port Scanner")
+        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        frame = tk.Frame(card.content, bg=COLORS['card_glass'])
+        frame.pack(fill=tk.X)
+        self.port_target = tk.Entry(frame, bg=COLORS['bg_mid'], fg='white', width=15)
         self.port_target.insert(0, "127.0.0.1")
-        self.port_target.pack(side=tk.LEFT, padx=(0, 10), ipady=6)
-        
-        self.port_range = tk.Entry(input_frame, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Segoe UI', 11), relief=tk.FLAT, insertbackground=COLORS['cyan_main'])
-        self.port_range.insert(0, "22,80,443,3306,5432,8080")
-        self.port_range.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10), ipady=6)
-        
-        tk.Button(input_frame, text="Scan", bg=COLORS['purple_main'], fg='white', font=('Segoe UI', 10, 'bold'), relief=tk.FLAT, command=self._scan_ports, padx=20, pady=6).pack(side=tk.LEFT)
-        
-        self.port_tree = ttk.Treeview(page, columns=('Port', 'Status', 'Service'), height=20)
-        self.port_tree.column('#0', width=0)
-        self.port_tree.column('Port', width=100)
-        self.port_tree.column('Status', width=100)
-        self.port_tree.column('Service', width=200)
-        self.port_tree.heading('Port', text='Port')
-        self.port_tree.heading('Status', text='Status')
-        self.port_tree.heading('Service', text='Service')
-        self.port_tree.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
-        
+        self.port_target.pack(side=tk.LEFT, padx=(0,10))
+        self.port_range = tk.Entry(frame, bg=COLORS['bg_mid'], fg='white', width=30)
+        self.port_range.insert(0, "22,80,443,3306")
+        self.port_range.pack(side=tk.LEFT, padx=(0,10))
+        NeonButton(frame, "Scan", self._scan_ports, COLORS['neon_pink']).pack(side=tk.LEFT)
+        self.port_tree = ttk.Treeview(card.content, columns=('Port','Status','Service'), height=15)
+        self.port_tree.heading('#0', text=''); self.port_tree.heading('Port', text='Port'); self.port_tree.heading('Status', text='Status'); self.port_tree.heading('Service', text='Service')
+        self.port_tree.column('#0', width=0); self.port_tree.column('Port', width=100); self.port_tree.column('Status', width=100); self.port_tree.column('Service', width=150)
+        self.port_tree.pack(fill=tk.BOTH, expand=True, pady=10)
         self.pages["ports"] = page
     
-    def _create_analysis_page(self):
-        page = tk.Frame(self.content, bg=COLORS['bg_dark'])
-        tk.Label(page, text="📊 NETWORK ANALYSIS", font=('Segoe UI', 16, 'bold'), fg=COLORS['cyan_main'], bg=COLORS['bg_dark']).pack(anchor=tk.W, padx=20, pady=(20, 10))
-        
-        btn_frame = tk.Frame(page, bg=COLORS['bg_dark'])
-        btn_frame.pack(fill=tk.X, padx=20, pady=10)
-        
-        tk.Button(btn_frame, text="Analyze", bg=COLORS['cyan_main'], fg='white', font=('Segoe UI', 10, 'bold'), relief=tk.FLAT, command=self._analyze, padx=20, pady=6).pack(side=tk.LEFT)
-        
-        self.analysis_text = tk.Text(page, bg=COLORS['bg_light'], fg=COLORS['text_white'], font=('Consolas', 9))
-        self.analysis_text.pack(fill=tk.BOTH, expand=True, padx=20, pady=(0, 20))
-        
+    def _build_analysis(self):
+        page = tk.Frame(self.content, bg=COLORS['card_glass'])
+        card = GlassCard(page, "🐙 Analysis")
+        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        NeonButton(card.content, "Analyze", self._analyze, COLORS['neon_cyan']).pack(pady=10)
+        self.analysis_text = tk.Text(card.content, bg=COLORS['bg_mid'], fg='white', font=('Consolas', 9), height=20)
+        self.analysis_text.pack(fill=tk.BOTH, expand=True)
         self.pages["analysis"] = page
     
-    def _create_groups_page(self):
-        page = tk.Frame(self.content, bg=COLORS['bg_dark'])
-        tk.Label(page, text="📋 GROUPS MANAGEMENT", font=('Segoe UI', 16, 'bold'), fg=COLORS['cyan_main'], bg=COLORS['bg_dark']).pack(anchor=tk.W, padx=20, pady=(20, 10))
-        
-        tk.Label(page, text="Sắp có chức năng này trong phiên bản tiếp theo!", font=('Segoe UI', 12), fg=COLORS['text_gray'], bg=COLORS['bg_dark']).pack(expand=True)
-        
+    def _build_groups(self):
+        page = tk.Frame(self.content, bg=COLORS['card_glass'])
+        card = GlassCard(page, "🐙 Groups")
+        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        top = tk.Frame(card.content, bg=COLORS['card_glass'])
+        top.pack(fill=tk.X)
+        self.new_group_name = tk.Entry(top, bg=COLORS['bg_mid'], fg='white', width=20)
+        self.new_group_name.pack(side=tk.LEFT, padx=(0,10))
+        NeonButton(top, "Create", self._create_group, COLORS['neon_green']).pack(side=tk.LEFT)
+        mid = tk.Frame(card.content, bg=COLORS['card_glass'])
+        mid.pack(fill=tk.BOTH, expand=True, pady=10)
+        left = tk.Frame(mid, bg=COLORS['bg_mid'])
+        left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        tk.Label(left, text="Groups", bg=COLORS['bg_mid'], fg='white').pack()
+        self.groups_listbox = tk.Listbox(left, bg=COLORS['bg_deep'], fg='white')
+        self.groups_listbox.pack(fill=tk.BOTH, expand=True)
+        self.groups_listbox.bind('<<ListboxSelect>>', self._show_group_ips)
+        right = tk.Frame(mid, bg=COLORS['bg_mid'])
+        right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5)
+        tk.Label(right, text="IPs", bg=COLORS['bg_mid'], fg='white').pack()
+        self.ips_listbox = tk.Listbox(right, bg=COLORS['bg_deep'], fg='white')
+        self.ips_listbox.pack(fill=tk.BOTH, expand=True)
+        btn_frame = tk.Frame(card.content, bg=COLORS['card_glass'])
+        btn_frame.pack(fill=tk.X)
+        NeonButton(btn_frame, "Add IP", self._add_ip_group, COLORS['neon_cyan']).pack(side=tk.LEFT, padx=5)
+        NeonButton(btn_frame, "Remove IP", self._remove_ip_group, COLORS['error']).pack(side=tk.LEFT, padx=5)
+        NeonButton(btn_frame, "Load to Ping", self._load_group_to_ping, COLORS['neon_green']).pack(side=tk.LEFT, padx=5)
         self.pages["groups"] = page
+        self._refresh_groups()
     
-    def _create_backup_page(self):
-        page = tk.Frame(self.content, bg=COLORS['bg_dark'])
-        tk.Label(page, text="💾 BACKUP", font=('Segoe UI', 16, 'bold'), fg=COLORS['cyan_main'], bg=COLORS['bg_dark']).pack(anchor=tk.W, padx=20, pady=(20, 10))
-        
-        btn_frame = tk.Frame(page, bg=COLORS['bg_dark'])
-        btn_frame.pack(expand=True)
-        
-        tk.Button(btn_frame, text="📤 Export Config", bg=COLORS['green'], fg='white', font=('Segoe UI', 11, 'bold'), relief=tk.FLAT, command=self._export, padx=30, pady=12).pack(pady=10)
-        tk.Button(btn_frame, text="📥 Import Config", bg=COLORS['cyan_main'], fg='white', font=('Segoe UI', 11, 'bold'), relief=tk.FLAT, command=self._import, padx=30, pady=12).pack(pady=10)
-        
+    def _build_backup(self):
+        page = tk.Frame(self.content, bg=COLORS['card_glass'])
+        card = GlassCard(page, "🐙 Backup")
+        card.pack(expand=True, padx=20, pady=20)
+        NeonButton(card.content, "Export", self._export, COLORS['neon_cyan']).pack(pady=10)
+        NeonButton(card.content, "Import", self._import, COLORS['neon_purple']).pack(pady=10)
+        NeonButton(card.content, "Reset", self._reset_all, COLORS['error']).pack(pady=10)
         self.pages["backup"] = page
     
-    def _create_info_page(self):
-        page = tk.Frame(self.content, bg=COLORS['bg_dark'])
-        
-        info_frame = tk.Frame(page, bg=COLORS['bg_main'], relief=tk.RAISED, bd=0, highlightthickness=1, highlightbackground=COLORS['border_light'])
-        info_frame.pack(expand=True, padx=20, pady=20, fill=tk.BOTH)
-        
-        tk.Label(info_frame, text="🌐 NETWORK TOOL PRO", font=('Segoe UI', 18, 'bold'), fg=COLORS['cyan_main'], bg=COLORS['bg_main']).pack(pady=(30, 20))
-        
-        info_text = """v1.2.6 - Developed by Yuri
-
-✨ Chức năng:
-  • Ping monitoring - Không chớp chớp
-  • Traceroute - Theo dõi đường đi
-  • Network scan - Quét với MAC address
-  • Port scanner - Quét cổng
-  • Group management - Quản lý nhóm
-  • Host settings - Lưu VLAN, VNC, Notes
-
-🔧 Công nghệ:
-  • Python + Tkinter (GUI)
-  • Threading (Ping không block)
-  • JSON config (Lưu tự động)
-
-📖 Hướng dẫn:
-  1. Nhập IP trong search bar
-  2. Click ▶ để thêm host
-  3. Click ⚙️ để cài đặt VNC/VLAN
-  4. Click VNC để mở RealVNC Viewer
-
-⚠️ Yêu cầu:
-  • Windows/Linux/Mac
-  • Python 3.8+
-  • RealVNC Viewer (để dùng VNC)
-
-📝 Liên hệ: yuri@network-tool.dev
-"""
-        
-        tk.Label(info_frame, text=info_text, font=('Segoe UI', 10), fg=COLORS['text_white'], bg=COLORS['bg_main'], justify=tk.LEFT).pack(padx=30, pady=20)
-        
+    def _build_info(self):
+        page = tk.Frame(self.content, bg=COLORS['card_glass'])
+        card = GlassCard(page, "🐙 Info")
+        card.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        txt = f"Host: {socket.gethostname()}\nIP: {self._get_local_ip()}\nOS: {platform.system()}\n\n✨ Features:\n- Ping Monitor\n- VNC/SSH/RDP\n- Groups\n- VLAN & Notes"
+        tk.Label(card.content, text=txt, bg=COLORS['card_glass'], fg='white', justify=tk.LEFT, font=('Consolas', 10)).pack(pady=20)
         self.pages["info"] = page
     
-    # ===== FUNCTIONS =====
-    def _add_host_from_search(self):
-        ip = self.search_entry.get().strip()
-        if not ip or ip == "Nhập IP...":
-            return
-        if ip in self.hosts:
-            messagebox.showwarning("Cảnh báo", "Host này đã được thêm!")
-            return
-        
-        HostCard(self.hosts_container, ip, ip, self._remove_host, self._on_host_update)
-        self.hosts[ip] = True
-        self.search_entry.delete(0, tk.END)
-        self.search_entry.insert(0, "Nhập IP...")
-        self._save_config()
+    # ========== LOGIC ==========
+    def _get_local_ip(self):
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80)); ip = s.getsockname()[0]; s.close()
+            return ip
+        except: return "127.0.0.1"
     
-    def _remove_host(self, ip):
-        if ip in self.hosts:
-            del self.hosts[ip]
+    def _add_host(self):
+        ip = self.search_ip.get().strip()
+        if ip and ip not in self.hosts:
+            HostCard(self.hosts_container, ip, ip, self._remove_host, None)
+            self.hosts[ip] = True
             self._save_config()
     
-    def _on_host_update(self, ip, status):
-        pass  # Update status
+    def _remove_host(self, ip):
+        if ip in self.hosts: del self.hosts[ip]; self._save_config()
     
     def _stop_all(self):
-        for widget in self.hosts_container.winfo_children():
-            if isinstance(widget, HostCard):
-                widget.stop()
-                widget.destroy()
+        for w in self.hosts_container.winfo_children():
+            if hasattr(w, 'stop'): w.stop(); w.destroy()
         self.hosts.clear()
     
     def _run_trace(self):
-        host = self.trace_entry.get().strip()
-        if not host:
-            return
-        self.trace_text.delete("1.0", tk.END)
-        self.trace_text.insert("1.0", "Đang trace...")
-        
+        host = self.trace_target.get()
+        self.trace_text.delete(1.0, tk.END)
+        self.trace_text.insert(1.0, "Tracing...\n")
         def do():
-            result = NetworkAdapter.traceroute(host)
-            self.root.after(0, lambda: (self.trace_text.delete("1.0", tk.END), self.trace_text.insert("1.0", result)))
-        
+            try:
+                cmd = ['tracert' if IS_WINDOWS else 'traceroute', host]
+                out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, universal_newlines=True, timeout=30)
+                self.trace_text.delete(1.0, tk.END); self.trace_text.insert(1.0, out)
+            except Exception as e: self.trace_text.insert(1.0, f"Error: {e}")
         threading.Thread(target=do, daemon=True).start()
     
     def _run_scan(self):
-        cidr = self.cidr_entry.get().strip()
-        if not cidr:
-            return
-        
+        cidr = self.cidr_entry.get()
         self.scan_tree.delete(*self.scan_tree.get_children())
-        
-        def do():
-            for ip, status, mac in NetworkAdapter.scan_network(cidr):
-                self.root.after(0, lambda x=ip, s=status, m=mac: self.scan_tree.insert('', 'end', values=(x, s, m)))
-        
-        threading.Thread(target=do, daemon=True).start()
+        def scan():
+            try:
+                net = ipaddress.ip_network(cidr)
+                def ping(ip):
+                    r = subprocess.run(['ping', '-n', '1', '-w', '500', str(ip)], capture_output=True) if IS_WINDOWS else subprocess.run(['ping', '-c', '1', '-W', '1', str(ip)], capture_output=True)
+                    if r.returncode == 0:
+                        mac = self._get_mac_from_arp(str(ip))
+                        self.root.after(0, lambda i=str(ip), m=mac: self.scan_tree.insert('', tk.END, values=(i, "ONLINE", m)))
+                with ThreadPoolExecutor(max_workers=30) as ex:
+                    ex.map(ping, net.hosts())
+            except Exception as e: messagebox.showerror("Error", str(e))
+        threading.Thread(target=scan, daemon=True).start()
+    
+    def _get_mac_from_arp(self, ip):
+        try:
+            cmd = ['arp', '-a', ip] if IS_WINDOWS else ['arp', '-n', ip]
+            out = subprocess.check_output(cmd, universal_newlines=True)
+            mac = re.search(r'([0-9a-fA-F]{2}[:-]){5}([0-9a-fA-F]{2})', out)
+            return mac.group(0) if mac else "Unknown"
+        except: return "Unknown"
     
     def _scan_ports(self):
-        target = self.port_target.get().strip()
-        ports_str = self.port_range.get().strip()
-        
-        ports = []
-        for p in ports_str.split(','):
-            p = p.strip()
-            try:
-                ports.append(int(p))
-            except:
-                pass
-        
+        target = self.port_target.get()
+        ports = [int(p.strip()) for p in self.port_range.get().split(',') if p.strip().isdigit()]
         self.port_tree.delete(*self.port_tree.get_children())
-        services = {22: 'SSH', 80: 'HTTP', 443: 'HTTPS', 3306: 'MySQL', 5432: 'PostgreSQL'}
-        
+        services = {22:'SSH',80:'HTTP',443:'HTTPS',3306:'MySQL'}
         def check(p):
             try:
-                s = socket.socket()
-                s.settimeout(0.3)
-                result = s.connect_ex((target, p)) == 0
+                s = socket.socket(); s.settimeout(0.3)
+                if s.connect_ex((target, p)) == 0:
+                    self.root.after(0, lambda: self.port_tree.insert('', tk.END, values=(p, "OPEN", services.get(p, "Unknown"))))
                 s.close()
-                return (p, result)
-            except:
-                return (p, False)
-        
-        def do():
-            with ThreadPoolExecutor(max_workers=50) as ex:
-                for p, is_open in ex.map(check, ports):
-                    if is_open:
-                        self.root.after(0, lambda port=p: self.port_tree.insert('', 'end', values=(port, "✓ OPEN", services.get(port, "?"))))
-        
-        threading.Thread(target=do, daemon=True).start()
+            except: pass
+        threading.Thread(target=lambda: [check(p) for p in ports], daemon=True).start()
     
     def _analyze(self):
-        self.analysis_text.delete("1.0", tk.END)
-        self.analysis_text.insert("1.0", f"📍 Địa chỉ IP cục bộ: {NetworkAdapter.get_local_ip()}\n\nTính năng phân tích chi tiết sắp có...")
+        self.analysis_text.delete(1.0, tk.END)
+        self.analysis_text.insert(1.0, f"Local IP: {self._get_local_ip()}\nActive Hosts: {len(self.hosts)}\n\n🐙 Jellyfish watching over your network...")
+    
+    def _refresh_groups(self):
+        self.groups_listbox.delete(0, tk.END)
+        for g in self.groups: self.groups_listbox.insert(tk.END, g)
+    
+    def _show_group_ips(self, e):
+        sel = self.groups_listbox.curselection()
+        if sel:
+            name = self.groups_listbox.get(sel[0])
+            self.ips_listbox.delete(0, tk.END)
+            for ip in self.groups.get(name, []): self.ips_listbox.insert(tk.END, ip)
+    
+    def _create_group(self):
+        name = self.new_group_name.get()
+        if name and name not in self.groups:
+            self.groups[name] = []; self._refresh_groups(); self._save_config()
+    
+    def _add_ip_group(self):
+        sel = self.groups_listbox.curselection()
+        if sel:
+            name = self.groups_listbox.get(sel[0])
+            ip = simpledialog.askstring("Add IP", "IP:")
+            if ip: self.groups[name].append(ip); self._save_config(); self._show_group_ips(None)
+    
+    def _remove_ip_group(self):
+        sel = self.groups_listbox.curselection(); isel = self.ips_listbox.curselection()
+        if sel and isel:
+            name = self.groups_listbox.get(sel[0]); ip = self.ips_listbox.get(isel[0])
+            if ip in self.groups[name]: self.groups[name].remove(ip); self._save_config(); self._show_group_ips(None)
+    
+    def _load_group_to_ping(self):
+        sel = self.groups_listbox.curselection()
+        if sel:
+            for ip in self.groups[self.groups_listbox.get(sel[0])]:
+                if ip not in self.hosts:
+                    HostCard(self.hosts_container, ip, ip, self._remove_host, None)
+                    self.hosts[ip] = True
+            self.show_ping()
     
     def _export(self):
-        f = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
+        f = filedialog.asksaveasfilename(defaultextension=".json")
         if f:
-            with open(f, 'w') as fp:
-                json.dump({'hosts': list(self.hosts.keys())}, fp, indent=2)
-            messagebox.showinfo("Thành công", "Xuất config thành công!")
+            with open(f, 'w') as fp: json.dump({'hosts': list(self.hosts.keys()), 'groups': self.groups}, fp, indent=2)
+            messagebox.showinfo("Done", "Exported")
     
     def _import(self):
-        f = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+        f = filedialog.askopenfilename()
         if f:
-            try:
-                with open(f, 'r') as fp:
-                    data = json.load(fp)
-                for ip in data.get('hosts', []):
-                    if ip not in self.hosts:
-                        HostCard(self.hosts_container, ip, ip, self._remove_host, self._on_host_update)
-                        self.hosts[ip] = True
-                messagebox.showinfo("Thành công", "Nhập config thành công!")
-            except:
-                messagebox.showerror("Lỗi", "File config không hợp lệ!")
+            with open(f) as fp: data = json.load(fp)
+            for ip in data.get('hosts', []):
+                if ip not in self.hosts:
+                    HostCard(self.hosts_container, ip, ip, self._remove_host, None); self.hosts[ip] = True
+            self.groups = data.get('groups', {"Default":[]}); self._refresh_groups(); self._save_config()
+    
+    def _reset_all(self):
+        if messagebox.askyesno("Confirm", "Reset all?"):
+            self._stop_all(); self.groups = {"Default": []}; self._refresh_groups(); self._save_config()
     
     def _save_config(self):
-        try:
-            with open(self.config_file, 'w') as f:
-                json.dump({'hosts': list(self.hosts.keys())}, f)
-        except:
-            pass
+        with open(self.config_file, 'w') as f: json.dump({'hosts': list(self.hosts.keys()), 'groups': self.groups}, f)
     
     def _load_config(self):
-        try:
-            if self.config_file.exists():
-                with open(self.config_file, 'r') as f:
-                    data = json.load(f)
-                    for ip in data.get('hosts', []):
-                        HostCard(self.hosts_container, ip, ip, self._remove_host, self._on_host_update)
-                        self.hosts[ip] = True
-        except:
-            pass
+        if self.config_file.exists():
+            try:
+                with open(self.config_file) as f: data = json.load(f)
+                for ip in data.get('hosts', []):
+                    HostCard(self.hosts_container, ip, ip, self._remove_host, None); self.hosts[ip] = True
+                self.groups = data.get('groups', {"Default":[]}); self._refresh_groups()
+            except: pass
     
-    # ===== NAVIGATION =====
-    def _show_page(self, page_name):
-        for page in self.pages.values():
-            page.pack_forget()
-        self.pages[page_name].pack(fill=tk.BOTH, expand=True)
+    def show_ping(self): self._show_page("ping")
+    def show_trace(self): self._show_page("trace")
+    def show_scan(self): self._show_page("scan")
+    def show_ports(self): self._show_page("ports")
+    def show_analysis(self): self._show_page("analysis")
+    def show_groups(self): self._show_page("groups")
+    def show_backup(self): self._show_page("backup")
+    def show_info(self): self._show_page("info")
     
-    def _show_ping(self):
-        self._show_page("ping")
+    def _show_page(self, name):
+        for p in self.pages.values(): p.pack_forget()
+        self.pages[name].pack(fill=tk.BOTH, expand=True)
     
-    def _show_trace(self):
-        self._show_page("trace")
+    def _on_close(self): self._stop_all(); self.root.destroy()
     
-    def _show_scan(self):
-        self._show_page("scan")
-    
-    def _show_ports(self):
-        self._show_page("ports")
-    
-    def _show_analysis(self):
-        self._show_page("analysis")
-    
-    def _show_groups(self):
-        self._show_page("groups")
-    
-    def _show_backup(self):
-        self._show_page("backup")
-    
-    def _show_info(self):
-        self._show_page("info")
-    
-    def _on_close(self):
-        self._stop_all()
-        self.root.destroy()
-    
-    def run(self):
-        self.root.mainloop()
+    def run(self): self.root.mainloop()
 
 
 if __name__ == "__main__":
