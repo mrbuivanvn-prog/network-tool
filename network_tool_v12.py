@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
-NETWORK SCANNER PRO - ULTIMATE EDITION
-Scan IP | Port Scan | Ping | Traceroute | VNC | Groups | Backup
-Email: mrbuivanvn@gmail.com | Jellyfish Logo
+NETWORK SCANNER PRO - FIXED SCAN
+Scan IP hiển thị kết quả ngay lập tức
 """
 
 import tkinter as tk
@@ -16,7 +15,7 @@ import re
 import ipaddress
 import time
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 import base64
 from io import BytesIO
@@ -40,19 +39,17 @@ def get_jellyfish_icon(size=(32, 32)):
         return None
 
 # ============================================================================
-# MÀU SẮC SẮC NÉT
+# MÀU SẮC
 # ============================================================================
 COLORS = {
     'bg': '#1E1E1E',
     'sidebar': '#252526',
     'card': '#2D2D2D',
     'accent': '#007ACC',
-    'accent_hover': '#1C8AE8',
     'text': '#FFFFFF',
     'text_sec': '#CCCCCC',
     'success': '#6A9955',
     'error': '#F48771',
-    'border': '#3E3E42',
 }
 
 
@@ -60,43 +57,36 @@ class NetworkScanner:
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("Network Scanner Pro - Ultimate Edition")
-        self.root.geometry("1350x750")
+        self.root.geometry("1300x750")
         self.root.configure(bg=COLORS['bg'])
-        self.root.minsize(1000, 600)
         
         # Dữ liệu
         self.ping_hosts = []
         self.groups = {"Default": []}
         self.config_file = Path.home() / ".net_scanner.json"
+        self.scanning = False
         
         self._create_ui()
         self._load_config()
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
     
     def _create_ui(self):
-        # Header với logo và email
-        header = tk.Frame(self.root, bg=COLORS['accent'], height=55)
+        # Header
+        header = tk.Frame(self.root, bg=COLORS['accent'], height=50)
         header.pack(fill=tk.X)
         header.pack_propagate(False)
         
-        # Logo sứa
-        self.jellyfish_icon = get_jellyfish_icon((28, 28))
-        if self.jellyfish_icon:
-            logo_label = tk.Label(header, image=self.jellyfish_icon, bg=COLORS['accent'])
-            logo_label.pack(side=tk.LEFT, padx=(15, 5), pady=5)
+        jelly = get_jellyfish_icon((24, 24))
+        if jelly:
+            tk.Label(header, image=jelly, bg=COLORS['accent']).pack(side=tk.LEFT, padx=(10, 5))
         
         tk.Label(header, text="Network Scanner Pro", bg=COLORS['accent'], 
                 fg='white', font=('Segoe UI', 14, 'bold')).pack(side=tk.LEFT)
         
-        tk.Label(header, text="v2.0", bg=COLORS['accent'], 
-                fg='#A0D0FF', font=('Segoe UI', 9)).pack(side=tk.LEFT, padx=(5, 0))
-        
-        # Email ở góc phải
-        tk.Label(header, text="📧 mrbuivanvn@gmail.com", bg=COLORS['accent'], 
+        tk.Label(header, text="mrbuivanvn@gmail.com", bg=COLORS['accent'], 
                 fg='white', font=('Segoe UI', 9)).pack(side=tk.RIGHT, padx=15)
         
-        self.status = tk.Label(header, text="✓ Ready", bg=COLORS['accent'], 
-                               fg='white', font=('Segoe UI', 9))
+        self.status = tk.Label(header, text="✓ Ready", bg=COLORS['accent'], fg='white')
         self.status.pack(side=tk.RIGHT, padx=15)
         
         # Main
@@ -104,18 +94,14 @@ class NetworkScanner:
         main.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
         
         # Sidebar
-        sidebar = tk.Frame(main, bg=COLORS['sidebar'], width=160)
+        sidebar = tk.Frame(main, bg=COLORS['sidebar'], width=150)
         sidebar.pack(side=tk.LEFT, fill=tk.Y)
         sidebar.pack_propagate(False)
         
-        # Logo lớn trong sidebar
-        logo_big = get_jellyfish_icon((48, 48))
-        if logo_big:
-            tk.Label(sidebar, image=logo_big, bg=COLORS['sidebar']).pack(pady=(15, 5))
-        tk.Label(sidebar, text="NETWORK\nSCANNER", bg=COLORS['sidebar'], 
-                fg=COLORS['accent'], font=('Segoe UI', 11, 'bold'), justify=tk.CENTER).pack(pady=(0, 15))
+        jelly_big = get_jellyfish_icon((48, 48))
+        if jelly_big:
+            tk.Label(sidebar, image=jelly_big, bg=COLORS['sidebar']).pack(pady=(15, 5))
         
-        # Nút chức năng
         buttons = [
             ("📡 Scan IP", self._show_scan),
             ("🔌 Port Scan", self._show_port),
@@ -136,7 +122,7 @@ class NetworkScanner:
         
         # Content
         self.content = tk.Frame(main, bg=COLORS['bg'])
-        self.content.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(10, 0))
+        self.content.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
         
         self._show_scan()
     
@@ -144,7 +130,7 @@ class NetworkScanner:
         for w in self.content.winfo_children():
             w.destroy()
     
-    # ==================== SCAN IP (HOẠT ĐỘNG HOÀN TOÀN) ====================
+    # ==================== SCAN IP (FIXED - HIỂN THỊ NGAY) ====================
     def _show_scan(self):
         self._clear()
         
@@ -152,39 +138,39 @@ class NetworkScanner:
         toolbar = tk.Frame(self.content, bg=COLORS['bg'])
         toolbar.pack(fill=tk.X, pady=(0, 10))
         
-        # Frame nhập range
-        range_frame = tk.Frame(toolbar, bg=COLORS['bg'])
-        range_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        
-        tk.Label(range_frame, text="IP Range:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
-        self.scan_range = tk.Entry(range_frame, bg=COLORS['card'], fg=COLORS['text'], 
-                                   width=22, font=('Consolas', 10), relief=tk.FLAT)
+        tk.Label(toolbar, text="IP Range:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
+        self.scan_range = tk.Entry(toolbar, bg=COLORS['card'], fg=COLORS['text'], 
+                                   width=22, font=('Consolas', 10))
         self.scan_range.pack(side=tk.LEFT, padx=5)
         self.scan_range.insert(0, "192.168.1.1-192.168.1.254")
         
-        tk.Label(range_frame, text="CIDR:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
-        self.scan_cidr = tk.Entry(range_frame, bg=COLORS['card'], fg=COLORS['text'], 
-                                  width=18, font=('Consolas', 10), relief=tk.FLAT)
+        tk.Label(toolbar, text="CIDR:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
+        self.scan_cidr = tk.Entry(toolbar, bg=COLORS['card'], fg=COLORS['text'], 
+                                  width=18, font=('Consolas', 10))
         self.scan_cidr.pack(side=tk.LEFT, padx=5)
         self.scan_cidr.insert(0, "192.168.1.0/24")
         
-        # Nút scan
-        scan_btn = tk.Button(toolbar, text="▶ Scan Now", bg=COLORS['accent'], fg='white',
-                            font=('Segoe UI', 10, 'bold'), padx=15, pady=5,
-                            command=self._do_scan, cursor='hand2')
-        scan_btn.pack(side=tk.RIGHT, padx=5)
+        self.scan_btn = tk.Button(toolbar, text="▶ Scan Now", bg=COLORS['accent'], fg='white',
+                                  font=('Segoe UI', 10, 'bold'), padx=15, pady=5,
+                                  command=self._do_scan)
+        self.scan_btn.pack(side=tk.LEFT, padx=10)
         
-        # Tạo frame chứa treeview + scrollbar
+        # Progress label
+        self.scan_progress = tk.Label(self.content, text="", bg=COLORS['bg'], 
+                                      fg=COLORS['text_sec'], font=('Segoe UI', 9))
+        self.scan_progress.pack(fill=tk.X, pady=(0, 5))
+        
+        # Treeview frame
         tree_frame = tk.Frame(self.content, bg=COLORS['bg'])
         tree_frame.pack(fill=tk.BOTH, expand=True)
         
-        # Scrollbar
+        # Scrollbars
         scroll_y = ttk.Scrollbar(tree_frame, orient=tk.VERTICAL)
         scroll_x = ttk.Scrollbar(tree_frame, orient=tk.HORIZONTAL)
         
         # Treeview
         columns = ('IP', 'Name', 'Status', 'MAC', 'Response')
-        self.scan_tree = ttk.Treeview(tree_frame, columns=columns, 
+        self.scan_tree = ttk.Treeview(tree_frame, columns=columns,
                                        yscrollcommand=scroll_y.set,
                                        xscrollcommand=scroll_x.set)
         
@@ -208,11 +194,10 @@ class NetworkScanner:
         # Style
         style = ttk.Style()
         style.theme_use('clam')
-        style.configure('Treeview', background=COLORS['card'], foreground=COLORS['text'], 
+        style.configure('Treeview', background=COLORS['card'], foreground=COLORS['text'],
                        fieldbackground=COLORS['card'], rowheight=24)
         style.configure('Treeview.Heading', background=COLORS['sidebar'], 
                        foreground=COLORS['text'], font=('Segoe UI', 9, 'bold'))
-        style.map('Treeview', background=[('selected', COLORS['accent'])])
         
         self.scan_tree.grid(row=0, column=0, sticky='nsew')
         scroll_y.grid(row=0, column=1, sticky='ns')
@@ -223,28 +208,18 @@ class NetworkScanner:
         
         # Right-click menu
         self.scan_menu = tk.Menu(self.scan_tree, tearoff=0, bg=COLORS['card'], fg=COLORS['text'])
-        self.scan_menu.add_command(label="▶ Ping", command=self._scan_ping_selected)
-        self.scan_menu.add_command(label="🗺️ Traceroute", command=self._scan_trace_selected)
-        self.scan_menu.add_command(label="🖥️ VNC Connect", command=self._scan_vnc_selected)
+        self.scan_menu.add_command(label="▶ Ping", command=self._scan_ping)
+        self.scan_menu.add_command(label="🗺️ Traceroute", command=self._scan_trace)
+        self.scan_menu.add_command(label="🖥️ VNC Connect", command=self._scan_vnc)
         self.scan_menu.add_separator()
         self.scan_menu.add_command(label="📋 Copy IP", command=self._copy_ip)
-        self.scan_menu.add_command(label="📋 Copy Name", command=self._copy_name)
-        self.scan_tree.bind("<Button-3>", self._show_scan_menu)
-        
-        # Thông báo
-        self.scan_info = tk.Label(self.content, text="", bg=COLORS['bg'], fg=COLORS['text_sec'], font=('Segoe UI', 9))
-        self.scan_info.pack(fill=tk.X, pady=(5, 0))
+        self.scan_tree.bind("<Button-3>", self._show_menu)
     
-    def _do_scan(self):
-        # Xóa kết quả cũ
-        for item in self.scan_tree.get_children():
-            self.scan_tree.delete(item)
-        
-        # Lấy range IP
+    def _get_ips_from_input(self):
         range_str = self.scan_range.get().strip()
         cidr_str = self.scan_cidr.get().strip()
-        
         ips = []
+        
         if range_str and '-' in range_str:
             try:
                 parts = range_str.split('-')
@@ -257,29 +232,39 @@ class NetworkScanner:
                 while current <= end_int:
                     ips.append(str(ipaddress.ip_address(current)))
                     current += 1
-            except Exception as e:
-                messagebox.showerror("Error", f"Invalid IP range: {e}")
-                return
+            except:
+                pass
         elif cidr_str:
             try:
                 net = ipaddress.ip_network(cidr_str, strict=False)
                 ips = [str(ip) for ip in net.hosts()]
-            except Exception as e:
-                messagebox.showerror("Error", f"Invalid CIDR: {e}")
-                return
+            except:
+                pass
+        return ips
+    
+    def _do_scan(self):
+        # Xóa kết quả cũ
+        for item in self.scan_tree.get_children():
+            self.scan_tree.delete(item)
         
+        ips = self._get_ips_from_input()
         if not ips:
-            messagebox.showerror("Error", "Please enter valid IP range or CIDR!")
+            messagebox.showerror("Error", "Invalid IP range or CIDR!")
             return
         
-        self.scan_info.config(text=f"Scanning {len(ips)} IPs...")
+        if self.scanning:
+            return
+        
+        self.scanning = True
+        self.scan_btn.config(state=tk.DISABLED, text="⏹ Scanning...")
+        self.scan_progress.config(text=f"Scanning {len(ips)} IPs...")
         self.status.config(text=f"Scanning {len(ips)} IPs...")
         
-        def scan_ip(ip):
+        def scan_single_ip(ip):
             try:
                 param = '-n' if IS_WINDOWS else '-c'
                 start = time.time()
-                result = subprocess.run(['ping', param, '1', '-W', '1', ip], 
+                result = subprocess.run(['ping', param, '1', '-W', '1', ip],
                                        capture_output=True, text=True, timeout=2)
                 response = int((time.time() - start) * 1000)
                 
@@ -296,23 +281,32 @@ class NetworkScanner:
             except:
                 return None
         
-        def do():
-            results = []
-            with ThreadPoolExecutor(max_workers=50) as ex:
-                futures = [ex.submit(scan_ip, ip) for ip in ips]
-                for future in futures:
-                    r = future.result()
-                    if r:
-                        results.append(r)
-            
-            def update():
-                for ip, name, status, mac, resp in results:
-                    self.scan_tree.insert('', tk.END, values=(ip, name, status, mac, resp))
-                self.scan_info.config(text=f"✓ Scan completed - Found {len(results)} devices")
-                self.status.config(text=f"✓ Found {len(results)} devices")
-            self.root.after(0, update)
+        def update_result(result):
+            if result:
+                self.scan_tree.insert('', tk.END, values=result)
+                self.scan_tree.yview_moveto(1)
         
-        threading.Thread(target=do, daemon=True).start()
+        def scan_complete(found):
+            self.scanning = False
+            self.scan_btn.config(state=tk.NORMAL, text="▶ Scan Now")
+            self.scan_progress.config(text=f"✓ Scan completed - Found {found} devices")
+            self.status.config(text=f"✓ Found {found} devices")
+        
+        def do_scan():
+            found = 0
+            with ThreadPoolExecutor(max_workers=50) as executor:
+                futures = {executor.submit(scan_single_ip, ip): ip for ip in ips}
+                for future in as_completed(futures):
+                    result = future.result()
+                    if result:
+                        found += 1
+                        self.root.after(0, update_result, result)
+                    # Cập nhật progress
+                    self.root.after(0, lambda: self.scan_progress.config(
+                        text=f"Scanning... {found} found so far"))
+            self.root.after(0, scan_complete, found)
+        
+        threading.Thread(target=do_scan, daemon=True).start()
     
     def _get_mac(self, ip):
         try:
@@ -323,28 +317,26 @@ class NetworkScanner:
         except:
             return "Unknown"
     
-    def _show_scan_menu(self, event):
+    def _show_menu(self, event):
         item = self.scan_tree.identify_row(event.y)
         if item:
             self.scan_tree.selection_set(item)
             self.scan_menu.post(event.x_root, event.y_root)
     
-    def _scan_ping_selected(self):
+    def _scan_ping(self):
         sel = self.scan_tree.selection()
         if sel:
             ip = self.scan_tree.item(sel[0], 'values')[0]
             open_cmd(f'ping {ip} -t' if IS_WINDOWS else f'ping {ip}')
-            self.status.config(text=f"Pinging {ip}")
     
-    def _scan_trace_selected(self):
+    def _scan_trace(self):
         sel = self.scan_tree.selection()
         if sel:
             ip = self.scan_tree.item(sel[0], 'values')[0]
             cmd = f'tracert {ip}' if IS_WINDOWS else f'traceroute {ip}'
             open_cmd(cmd)
-            self.status.config(text=f"Tracing {ip}")
     
-    def _scan_vnc_selected(self):
+    def _scan_vnc(self):
         sel = self.scan_tree.selection()
         if sel:
             ip = self.scan_tree.item(sel[0], 'values')[0]
@@ -358,15 +350,6 @@ class NetworkScanner:
             self.root.clipboard_append(ip)
             self.status.config(text=f"Copied {ip}")
     
-    def _copy_name(self):
-        sel = self.scan_tree.selection()
-        if sel:
-            name = self.scan_tree.item(sel[0], 'values')[1]
-            if name:
-                self.root.clipboard_clear()
-                self.root.clipboard_append(name)
-                self.status.config(text=f"Copied {name}")
-    
     # ==================== PORT SCAN ====================
     def _show_port(self):
         self._clear()
@@ -375,20 +358,17 @@ class NetworkScanner:
         toolbar.pack(fill=tk.X, pady=(0, 10))
         
         tk.Label(toolbar, text="Target:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
-        self.port_target = tk.Entry(toolbar, bg=COLORS['card'], fg=COLORS['text'], 
-                                    width=18, font=('Consolas', 10), relief=tk.FLAT)
+        self.port_target = tk.Entry(toolbar, bg=COLORS['card'], fg=COLORS['text'], width=18)
         self.port_target.pack(side=tk.LEFT, padx=5)
         self.port_target.insert(0, "192.168.1.1")
         
         tk.Label(toolbar, text="Ports:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
-        self.port_list = tk.Entry(toolbar, bg=COLORS['card'], fg=COLORS['text'], 
-                                  width=35, font=('Consolas', 10), relief=tk.FLAT)
+        self.port_list = tk.Entry(toolbar, bg=COLORS['card'], fg=COLORS['text'], width=35)
         self.port_list.pack(side=tk.LEFT, padx=5)
-        self.port_list.insert(0, "21,22,23,25,80,443,445,3389,5900,8080")
+        self.port_list.insert(0, "22,80,443,3389,5900,8080")
         
         tk.Button(toolbar, text="Scan", bg=COLORS['accent'], fg='white',
-                 font=('Segoe UI', 10), padx=15, pady=5,
-                 command=self._do_port_scan).pack(side=tk.LEFT, padx=10)
+                 padx=15, pady=5, command=self._do_port_scan).pack(side=tk.LEFT, padx=10)
         
         # Treeview
         tree_frame = tk.Frame(self.content, bg=COLORS['bg'])
@@ -403,7 +383,6 @@ class NetworkScanner:
         self.port_tree.heading('Port', text='Port')
         self.port_tree.heading('Status', text='Status')
         self.port_tree.heading('Service', text='Service')
-        
         self.port_tree.column('#0', width=0)
         self.port_tree.column('Port', width=100)
         self.port_tree.column('Status', width=80)
@@ -412,49 +391,31 @@ class NetworkScanner:
         self.port_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll_y.pack(side=tk.RIGHT, fill=tk.Y)
         
-        style = ttk.Style()
-        style.configure('Treeview', background=COLORS['card'], foreground=COLORS['text'], 
-                       fieldbackground=COLORS['card'], rowheight=24)
-        style.configure('Treeview.Heading', background=COLORS['sidebar'], foreground=COLORS['text'])
-        
-        self.services = {
-            21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP', 53: 'DNS',
-            80: 'HTTP', 110: 'POP3', 143: 'IMAP', 443: 'HTTPS', 445: 'SMB',
-            3306: 'MySQL', 3389: 'RDP', 5432: 'PostgreSQL', 5900: 'VNC',
-            8080: 'HTTP-Alt', 8443: 'HTTPS-Alt'
-        }
+        self.services = {22:'SSH',80:'HTTP',443:'HTTPS',3389:'RDP',5900:'VNC',8080:'HTTP-Alt'}
     
     def _do_port_scan(self):
         target = self.port_target.get().strip()
         ports_str = self.port_list.get().strip()
         
         if not target:
-            messagebox.showerror("Error", "Enter target IP!")
             return
         
-        ports = []
-        for p in ports_str.split(','):
-            p = p.strip()
-            if p.isdigit():
-                ports.append(int(p))
-        
+        ports = [int(p.strip()) for p in ports_str.split(',') if p.strip().isdigit()]
         if not ports:
-            messagebox.showerror("Error", "Enter valid ports!")
             return
         
         for item in self.port_tree.get_children():
             self.port_tree.delete(item)
         
-        self.status.config(text=f"Scanning {len(ports)} ports on {target}...")
+        self.status.config(text=f"Scanning {len(ports)} ports...")
         
         def check_port(p):
             try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.settimeout(0.2)
-                result = s.connect_ex((target, p))
-                s.close()
-                if result == 0:
+                s = socket.socket()
+                s.settimeout(0.3)
+                if s.connect_ex((target, p)) == 0:
                     return p
+                s.close()
             except:
                 pass
             return None
@@ -465,9 +426,9 @@ class NetworkScanner:
                 for p in ex.map(check_port, ports):
                     if p:
                         open_ports.append(p)
-                        self.root.after(0, lambda x=p: self.port_tree.insert('', tk.END, 
+                        self.root.after(0, lambda x=p: self.port_tree.insert('', tk.END,
                             values=(x, "● OPEN", self.services.get(x, "Unknown"))))
-            self.root.after(0, lambda: self.status.config(text=f"✓ Scan completed - Found {len(open_ports)} open ports"))
+            self.root.after(0, lambda: self.status.config(text=f"✓ Found {len(open_ports)} open ports"))
         
         threading.Thread(target=do, daemon=True).start()
     
@@ -479,13 +440,11 @@ class NetworkScanner:
         add_frame.pack(fill=tk.X, pady=(0, 10))
         
         tk.Label(add_frame, text="IP:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
-        self.ping_ip = tk.Entry(add_frame, bg=COLORS['card'], fg=COLORS['text'], 
-                                width=18, font=('Consolas', 10), relief=tk.FLAT)
+        self.ping_ip = tk.Entry(add_frame, bg=COLORS['card'], fg=COLORS['text'], width=18)
         self.ping_ip.pack(side=tk.LEFT, padx=5)
         
         tk.Label(add_frame, text="Name:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
-        self.ping_name = tk.Entry(add_frame, bg=COLORS['card'], fg=COLORS['text'], 
-                                  width=15, font=('Segoe UI', 10), relief=tk.FLAT)
+        self.ping_name = tk.Entry(add_frame, bg=COLORS['card'], fg=COLORS['text'], width=15)
         self.ping_name.pack(side=tk.LEFT, padx=5)
         
         tk.Button(add_frame, text="Add", bg=COLORS['accent'], fg='white',
@@ -493,12 +452,10 @@ class NetworkScanner:
         tk.Button(add_frame, text="Remove All", bg=COLORS['error'], fg='white',
                  padx=15, pady=5, command=self._remove_all_ping).pack(side=tk.LEFT)
         
-        # Listbox
-        list_frame = tk.LabelFrame(self.content, text="Saved Hosts", bg=COLORS['card'], 
-                                   fg=COLORS['text'], font=('Segoe UI', 9, 'bold'))
+        list_frame = tk.LabelFrame(self.content, text="Saved Hosts", bg=COLORS['card'], fg=COLORS['text'])
         list_frame.pack(fill=tk.BOTH, expand=True)
         
-        self.ping_list = tk.Listbox(list_frame, bg=COLORS['bg'], fg=COLORS['text'], 
+        self.ping_list = tk.Listbox(list_frame, bg=COLORS['bg'], fg=COLORS['text'],
                                     selectbackground=COLORS['accent'], font=('Consolas', 10))
         self.ping_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
@@ -515,7 +472,6 @@ class NetworkScanner:
         ip = self.ping_ip.get().strip()
         name = self.ping_name.get().strip()
         if not ip:
-            messagebox.showwarning("Error", "Enter IP!")
             return
         if not name:
             name = ip
@@ -524,14 +480,12 @@ class NetworkScanner:
         self.ping_ip.delete(0, tk.END)
         self.ping_name.delete(0, tk.END)
         self._save_config()
-        self.status.config(text=f"Added {name}")
     
     def _ping_selected(self):
         sel = self.ping_list.curselection()
         if sel:
             host = self.ping_hosts[sel[0]]
             open_cmd(f'ping {host["ip"]} -t' if IS_WINDOWS else f'ping {host["ip"]}')
-            self.status.config(text=f"Pinging {host['name']}")
     
     def _remove_selected_ping(self):
         sel = self.ping_list.curselection()
@@ -557,23 +511,19 @@ class NetworkScanner:
         frame = tk.Frame(self.content, bg=COLORS['bg'])
         frame.pack(fill=tk.X, pady=30)
         
-        tk.Label(frame, text="Target IP / Hostname:", bg=COLORS['bg'], 
-                fg=COLORS['text'], font=('Segoe UI', 11)).pack(side=tk.LEFT, padx=5)
-        self.trace_ip = tk.Entry(frame, bg=COLORS['card'], fg=COLORS['text'], 
-                                 width=30, font=('Consolas', 11), relief=tk.FLAT)
+        tk.Label(frame, text="Target:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
+        self.trace_ip = tk.Entry(frame, bg=COLORS['card'], fg=COLORS['text'], width=25)
         self.trace_ip.pack(side=tk.LEFT, padx=5)
         self.trace_ip.insert(0, "8.8.8.8")
         
         tk.Button(frame, text="Trace Route", bg=COLORS['accent'], fg='white',
-                 font=('Segoe UI', 10, 'bold'), padx=20, pady=8,
-                 command=self._do_trace).pack(side=tk.LEFT, padx=10)
+                 padx=20, pady=8, command=self._do_trace).pack(side=tk.LEFT, padx=10)
     
     def _do_trace(self):
         ip = self.trace_ip.get().strip()
         if ip:
             cmd = f'tracert {ip}' if IS_WINDOWS else f'traceroute {ip}'
             open_cmd(cmd)
-            self.status.config(text=f"Tracing {ip}")
     
     # ==================== VNC ====================
     def _show_vnc(self):
@@ -582,34 +532,27 @@ class NetworkScanner:
         frame = tk.Frame(self.content, bg=COLORS['bg'])
         frame.pack(fill=tk.X, pady=30)
         
-        tk.Label(frame, text="IP Address:", bg=COLORS['bg'], fg=COLORS['text'], 
-                font=('Segoe UI', 11)).pack(side=tk.LEFT, padx=5)
-        self.vnc_ip = tk.Entry(frame, bg=COLORS['card'], fg=COLORS['text'], 
-                               width=20, font=('Consolas', 11), relief=tk.FLAT)
+        tk.Label(frame, text="IP:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
+        self.vnc_ip = tk.Entry(frame, bg=COLORS['card'], fg=COLORS['text'], width=18)
         self.vnc_ip.pack(side=tk.LEFT, padx=5)
         self.vnc_ip.insert(0, "192.168.1.10")
         
         tk.Label(frame, text="Port:", bg=COLORS['bg'], fg=COLORS['text']).pack(side=tk.LEFT, padx=5)
-        self.vnc_port = tk.Entry(frame, bg=COLORS['card'], fg=COLORS['text'], 
-                                 width=8, font=('Consolas', 11), relief=tk.FLAT)
+        self.vnc_port = tk.Entry(frame, bg=COLORS['card'], fg=COLORS['text'], width=8)
         self.vnc_port.pack(side=tk.LEFT, padx=5)
         self.vnc_port.insert(0, "5900")
         
         tk.Button(frame, text="Connect VNC", bg=COLORS['accent'], fg='white',
-                 font=('Segoe UI', 10, 'bold'), padx=20, pady=8,
-                 command=self._vnc_connect_from_input).pack(side=tk.LEFT, padx=10)
+                 padx=20, pady=8, command=self._vnc_connect_input).pack(side=tk.LEFT, padx=10)
     
-    def _vnc_connect_from_input(self):
+    def _vnc_connect_input(self):
         ip = self.vnc_ip.get().strip()
         port = self.vnc_port.get().strip()
         self._vnc_connect(ip, port)
     
     def _vnc_connect(self, ip, port="5900"):
         if not ip:
-            messagebox.showerror("Error", "Enter IP address!")
             return
-        
-        self.status.config(text=f"Connecting VNC to {ip}:{port}...")
         
         def do():
             try:
@@ -617,7 +560,6 @@ class NetworkScanner:
                     vnc_paths = [
                         r"C:\Program Files\RealVNC\VNC Viewer\vncviewer.exe",
                         r"C:\Program Files\TightVNC\tightvncviewer.exe",
-                        r"C:\Program Files\UltraVNC\vncviewer.exe",
                     ]
                     found = False
                     for path in vnc_paths:
@@ -629,10 +571,9 @@ class NetworkScanner:
                         subprocess.Popen(f'start vncviewer {ip}:{port}', shell=True)
                 else:
                     subprocess.Popen(['vncviewer', f'{ip}:{port}'])
-                self.root.after(0, lambda: self.status.config(text=f"VNC Viewer launched for {ip}"))
-            except Exception as e:
-                self.root.after(0, lambda: messagebox.showerror("Error", f"Cannot launch VNC: {e}"))
-        
+                self.root.after(0, lambda: self.status.config(text=f"VNC launched for {ip}"))
+            except:
+                pass
         threading.Thread(target=do, daemon=True).start()
     
     # ==================== GROUPS ====================
@@ -642,27 +583,23 @@ class NetworkScanner:
         top = tk.Frame(self.content, bg=COLORS['bg'])
         top.pack(fill=tk.X, pady=(0, 10))
         
-        self.new_group_name = tk.Entry(top, bg=COLORS['card'], fg=COLORS['text'], 
-                                       width=20, font=('Segoe UI', 10), relief=tk.FLAT)
-        self.new_group_name.pack(side=tk.LEFT, padx=5)
+        self.new_group = tk.Entry(top, bg=COLORS['card'], fg=COLORS['text'], width=20)
+        self.new_group.pack(side=tk.LEFT, padx=5)
         tk.Button(top, text="Create Group", bg=COLORS['accent'], fg='white',
                  padx=15, pady=5, command=self._create_group).pack(side=tk.LEFT, padx=10)
         
-        # Lists
         list_frame = tk.Frame(self.content, bg=COLORS['bg'])
         list_frame.pack(fill=tk.BOTH, expand=True)
         
         left = tk.LabelFrame(list_frame, text="Groups", bg=COLORS['card'], fg=COLORS['text'])
         left.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
-        self.groups_list = tk.Listbox(left, bg=COLORS['bg'], fg=COLORS['text'], 
-                                      selectbackground=COLORS['accent'], font=('Segoe UI', 10))
+        self.groups_list = tk.Listbox(left, bg=COLORS['bg'], fg=COLORS['text'], selectbackground=COLORS['accent'])
         self.groups_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.groups_list.bind('<<ListboxSelect>>', self._on_group_select)
         
         right = tk.LabelFrame(list_frame, text="IPs in Group", bg=COLORS['card'], fg=COLORS['text'])
         right.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=5)
-        self.ips_list = tk.Listbox(right, bg=COLORS['bg'], fg=COLORS['text'], 
-                                   selectbackground=COLORS['accent'], font=('Segoe UI', 10))
+        self.ips_list = tk.Listbox(right, bg=COLORS['bg'], fg=COLORS['text'], selectbackground=COLORS['accent'])
         self.ips_list.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         btn_frame = tk.Frame(self.content, bg=COLORS['bg'])
@@ -672,7 +609,7 @@ class NetworkScanner:
         tk.Button(btn_frame, text="Remove IP", bg=COLORS['error'], fg='white',
                  padx=15, pady=5, command=self._remove_ip_group).pack(side=tk.LEFT, padx=5)
         tk.Button(btn_frame, text="Load to Ping", bg=COLORS['success'], fg='white',
-                 padx=15, pady=5, command=self._load_group_to_ping).pack(side=tk.LEFT, padx=5)
+                 padx=15, pady=5, command=self._load_group).pack(side=tk.LEFT, padx=5)
         
         self._refresh_groups()
     
@@ -690,27 +627,24 @@ class NetworkScanner:
                 self.ips_list.insert(tk.END, ip)
     
     def _create_group(self):
-        name = self.new_group_name.get().strip()
+        name = self.new_group.get().strip()
         if name and name not in self.groups:
             self.groups[name] = []
             self._refresh_groups()
             self._save_config()
-            self.new_group_name.delete(0, tk.END)
-            self.status.config(text=f"Created group '{name}'")
+            self.new_group.delete(0, tk.END)
     
     def _add_ip_group(self):
         sel = self.groups_list.curselection()
         if not sel:
-            messagebox.showwarning("Warning", "Select a group first!")
             return
         name = self.groups_list.get(sel[0]).split(' (')[0]
-        ip = simpledialog.askstring("Add IP", "Enter IP address:")
+        ip = simpledialog.askstring("Add IP", "Enter IP:")
         if ip and ip not in self.groups[name]:
             self.groups[name].append(ip)
             self._refresh_groups()
             self._save_config()
             self._on_group_select(None)
-            self.status.config(text=f"Added {ip} to {name}")
     
     def _remove_ip_group(self):
         sel = self.groups_list.curselection()
@@ -725,7 +659,7 @@ class NetworkScanner:
             self._save_config()
             self._on_group_select(None)
     
-    def _load_group_to_ping(self):
+    def _load_group(self):
         sel = self.groups_list.curselection()
         if not sel:
             return
@@ -736,7 +670,6 @@ class NetworkScanner:
                 self.ping_hosts.append({'ip': ip, 'name': ip})
         self._refresh_ping_list()
         self._save_config()
-        self.status.config(text=f"Loaded {len(ips)} hosts to Ping")
     
     # ==================== BACKUP ====================
     def _show_backup(self):
@@ -745,23 +678,22 @@ class NetworkScanner:
         frame = tk.Frame(self.content, bg=COLORS['bg'])
         frame.pack(expand=True, pady=50)
         
-        tk.Button(frame, text="📤 Export Configuration", bg=COLORS['accent'], fg='white',
-                 font=('Segoe UI', 11), padx=40, pady=12, command=self._export).pack(pady=10)
-        tk.Button(frame, text="📥 Import Configuration", bg=COLORS['accent'], fg='white',
-                 font=('Segoe UI', 11), padx=40, pady=12, command=self._import).pack(pady=10)
-        tk.Button(frame, text="🔄 Reset All Settings", bg=COLORS['error'], fg='white',
-                 font=('Segoe UI', 11), padx=40, pady=12, command=self._reset).pack(pady=10)
+        tk.Button(frame, text="📤 Export Config", bg=COLORS['accent'], fg='white',
+                 padx=40, pady=12, command=self._export).pack(pady=10)
+        tk.Button(frame, text="📥 Import Config", bg=COLORS['accent'], fg='white',
+                 padx=40, pady=12, command=self._import).pack(pady=10)
+        tk.Button(frame, text="🔄 Reset All", bg=COLORS['error'], fg='white',
+                 padx=40, pady=12, command=self._reset).pack(pady=10)
     
     def _export(self):
-        f = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("JSON", "*.json")])
+        f = filedialog.asksaveasfilename(defaultextension=".json")
         if f:
-            data = {'ping_hosts': self.ping_hosts, 'groups': self.groups}
             with open(f, 'w') as fp:
-                json.dump(data, fp, indent=2)
-            messagebox.showinfo("Success", "Configuration exported!")
+                json.dump({'ping_hosts': self.ping_hosts, 'groups': self.groups}, fp, indent=2)
+            messagebox.showinfo("Success", "Exported!")
     
     def _import(self):
-        f = filedialog.askopenfilename(filetypes=[("JSON", "*.json")])
+        f = filedialog.askopenfilename()
         if f:
             try:
                 with open(f, 'r') as fp:
@@ -771,18 +703,17 @@ class NetworkScanner:
                     self._refresh_ping_list()
                     self._refresh_groups()
                     self._save_config()
-                messagebox.showinfo("Success", "Configuration imported!")
-            except Exception as e:
-                messagebox.showerror("Error", str(e))
+                messagebox.showinfo("Success", "Imported!")
+            except:
+                messagebox.showerror("Error", "Invalid file!")
     
     def _reset(self):
-        if messagebox.askyesno("Confirm", "Reset all settings?"):
+        if messagebox.askyesno("Confirm", "Reset all?"):
             self.ping_hosts.clear()
             self.groups = {"Default": []}
             self._refresh_ping_list()
             self._refresh_groups()
             self._save_config()
-            messagebox.showinfo("Success", "All settings reset!")
     
     def _save_config(self):
         with open(self.config_file, 'w') as f:
