@@ -18,26 +18,9 @@ import time
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
-import base64
-from io import BytesIO
 
 SYSTEM = platform.system().lower()
 IS_WINDOWS = SYSTEM == 'windows'
-
-# ============================================================================
-# ẢNH SỨA BASE64
-# ============================================================================
-JELLYFISH_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAACXBIWXMAAAsTAAALEwEAmpwYAAAF8GlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQi[...]
-
-def get_jellyfish_icon(size=(32, 32)):
-    try:
-        from PIL import Image, ImageTk
-        img_data = base64.b64decode(JELLYFISH_BASE64)
-        img = Image.open(BytesIO(img_data))
-        img = img.resize(size, Image.Resampling.LANCZOS)
-        return ImageTk.PhotoImage(img)
-    except:
-        return None
 
 # ============================================================================
 # MÀU SẮC - MODERN & ELEGANT
@@ -81,11 +64,8 @@ class NetworkScanner:
         header.pack(fill=tk.X)
         header.pack_propagate(False)
         
-        # Logo
-        self.jellyfish_icon = get_jellyfish_icon((32, 32))
-        if self.jellyfish_icon:
-            logo_label = tk.Label(header, image=self.jellyfish_icon, bg=COLORS['accent'])
-            logo_label.pack(side=tk.LEFT, padx=(15, 8), pady=10)
+        # Logo Emoji 🐙
+        tk.Label(header, text="🐙", bg=COLORS['accent'], font=('Arial', 24)).pack(side=tk.LEFT, padx=(15, 8), pady=5)
         
         tk.Label(header, text="Network Scanner Pro", bg=COLORS['accent'], 
                 fg='white', font=('Segoe UI', 15, 'bold')).pack(side=tk.LEFT)
@@ -110,10 +90,8 @@ class NetworkScanner:
         sidebar.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 10))
         sidebar.pack_propagate(False)
         
-        # Logo in sidebar
-        logo_big = get_jellyfish_icon((52, 52))
-        if logo_big:
-            tk.Label(sidebar, image=logo_big, bg=COLORS['sidebar']).pack(pady=(20, 10))
+        # Logo in sidebar 🐙
+        tk.Label(sidebar, text="🐙", bg=COLORS['sidebar'], font=('Arial', 32)).pack(pady=(20, 10))
         
         tk.Label(sidebar, text="TOOLS", bg=COLORS['sidebar'], 
                 fg=COLORS['accent'], font=('Segoe UI', 10, 'bold')).pack(pady=(10, 20))
